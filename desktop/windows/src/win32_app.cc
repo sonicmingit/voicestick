@@ -33,6 +33,7 @@ constexpr UINT kMenuClickToTalk = 1010;
 constexpr UINT kMenuAutoEnter = 1011;
 constexpr UINT kMenuOutputFocusedApp = 1012;
 constexpr UINT kMenuOutputSubtitle = 1013;
+constexpr UINT kMenuSideButtonSend = 1014;
 constexpr UINT kMenuForgetBase = 2100;
 constexpr UINT kMenuForgetEnd = 2199;
 constexpr UINT kMenuUpdateFirmwareBase = 2200;
@@ -71,9 +72,9 @@ std::wstring FirmwareIdentityText(const std::string& hardware, const std::string
         return Utf16FromUtf8(hardware);
     }
     if (!version.empty()) {
-        return L"Firmware " + Utf16FromUtf8(version);
+        return L"固件 " + Utf16FromUtf8(version);
     }
-    return L"Firmware Unknown";
+    return L"固件版本未知";
 }
 
 constexpr OverlayThemeColor kOverlayThemeColors[] = {
@@ -99,26 +100,26 @@ struct TranslationTarget {
 };
 
 constexpr TranslationTarget kTranslationTargets[] = {
-    {"en", L"English"},
-    {"zh-Hans", L"Chinese (Simplified)"},
-    {"zh-Hant", L"Chinese (Traditional)"},
-    {"ja", L"Japanese"},
-    {"ko", L"Korean"},
-    {"ru", L"Russian"},
-    {"fr", L"French"},
-    {"de", L"German"},
-    {"es", L"Spanish"},
-    {"it", L"Italian"},
-    {"pt", L"Portuguese"},
-    {"nl", L"Dutch"},
-    {"sv", L"Swedish"},
-    {"pl", L"Polish"},
-    {"tr", L"Turkish"},
-    {"ar", L"Arabic"},
-    {"hi", L"Hindi"},
-    {"id", L"Indonesian"},
-    {"vi", L"Vietnamese"},
-    {"th", L"Thai"},
+    {"en", L"英语"},
+    {"zh-Hans", L"简体中文"},
+    {"zh-Hant", L"繁体中文"},
+    {"ja", L"日语"},
+    {"ko", L"韩语"},
+    {"ru", L"俄语"},
+    {"fr", L"法语"},
+    {"de", L"德语"},
+    {"es", L"西班牙语"},
+    {"it", L"意大利语"},
+    {"pt", L"葡萄牙语"},
+    {"nl", L"荷兰语"},
+    {"sv", L"瑞典语"},
+    {"pl", L"波兰语"},
+    {"tr", L"土耳其语"},
+    {"ar", L"阿拉伯语"},
+    {"hi", L"印地语"},
+    {"id", L"印度尼西亚语"},
+    {"vi", L"越南语"},
+    {"th", L"泰语"},
 };
 
 } // namespace
@@ -152,11 +153,13 @@ int Win32App::Run() {
         AddTrayIcon();
 
         LogLine("Initializing WinSparkle");
+#if VOICESTICK_ENABLE_APP_UPDATES
         win_sparkle_set_appcast_url(VOICESTICK_APPCAST_URL);
         win_sparkle_set_automatic_check_for_updates(1);
         win_sparkle_set_update_check_interval(86400);
         win_sparkle_init();
         LogLine("WinSparkle initialized");
+#endif
 
         LogLine("Creating BLE coordinator");
         auto ble = std::make_unique<BleCentralWin>(config_.paired_device_ids, hwnd_);
@@ -186,7 +189,9 @@ int Win32App::Run() {
         if (!ShowOnboardingIfNeeded()) {
             LogLine("Onboarding did not complete; exiting");
             ShutdownAndQuit();
+#if VOICESTICK_ENABLE_APP_UPDATES
             win_sparkle_cleanup();
+#endif
             RemoveTrayIcon();
             return 0;
         }
@@ -197,7 +202,9 @@ int Win32App::Run() {
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }
+#if VOICESTICK_ENABLE_APP_UPDATES
         win_sparkle_cleanup();
+#endif
         RemoveTrayIcon();
         return static_cast<int>(message.wParam);
     } catch (const winrt::hresult_error& error) {
@@ -214,7 +221,23 @@ int Win32App::Run() {
 
 void Win32App::SetStatus(const std::string& status) {
     DispatchToUi([this, status] {
-        status_ = status;
+        static const std::map<std::string, std::string> translations{
+            {"Ready", "就绪"}, {"Listening", "正在录音"},
+            {"Processing", "正在识别"}, {"Translating", "正在翻译"},
+            {"Side button: Send", "文字已填入 · 按侧键发送"},
+            {"Return to original input to send", "请返回原输入窗口，再按侧键发送"},
+            {"Pair a VoiceStick", "请配对 VoiceStick"},
+            {"Turn on Bluetooth", "请开启蓝牙"},
+            {"Input save failed", "输入设置保存失败"},
+            {"Theme save failed", "主题保存失败"},
+            {"Position save failed", "位置保存失败"},
+            {"Output save failed", "输出设置保存失败"},
+        };
+        const auto it = translations.find(status);
+        status_ = it == translations.end() ? status : it->second;
+        if (overlay_ && (status == "Side button: Send" || status == "Return to original input to send")) {
+            overlay_->ShowSendReady(status == "Return to original input to send");
+        }
         RebuildTooltip();
     });
 }
@@ -262,12 +285,12 @@ void Win32App::HandlePairingCompleted(const std::string& device_id, std::optiona
         if (coordinator_) coordinator_->CheckFirmwareAfterPairing(device_id);
         LogLine("Confirmed paired device VS-" + device_id);
     }
-    std::string detail = "VS-" + device_id + " paired";
+    std::string detail = "VS-" + device_id + " 已配对";
     if (info && !info->hardware.empty()) detail += " (" + info->hardware + ")";
     if (info && !info->firmware_version.empty()) {
-        detail += ", firmware " + info->firmware_version;
+        detail += "，固件 " + info->firmware_version;
     }
-    ShowNotification("VoiceStick paired", detail);
+    ShowNotification("VoiceStick 配对成功", detail);
     RebuildTooltip();
 }
 
@@ -286,13 +309,13 @@ void Win32App::ShowFirmwareUpdatePrompt(const std::string& device_id,
                                         const std::string& latest_version,
                                         bool is_below_minimum) {
     DispatchToUi([this, device_id, current_version, latest_version, is_below_minimum] {
-        const auto message = L"VS-" + Utf16(device_id) + L" is running firmware " +
-                             Utf16(current_version) + L".\n\nThe latest firmware is " +
+        const auto message = L"VS-" + Utf16(device_id) + L" 当前固件版本为 " +
+                             Utf16(current_version) + L"。\n\n最新固件版本为 " +
                              Utf16(latest_version) + L".";
         const int result = MessageBoxW(
             hwnd_,
             message.c_str(),
-            is_below_minimum ? L"Firmware update recommended" : L"Firmware update available",
+            is_below_minimum ? L"建议更新固件" : L"发现固件更新",
             MB_ICONINFORMATION | MB_YESNO | MB_DEFBUTTON1);
         if (result == IDYES) {
             StartFirmwareUpdate(device_id);
@@ -338,7 +361,7 @@ void Win32App::ShowFinalCountdown(const std::string& text,
 void Win32App::ShowPausedFinal(const std::string& text, const std::optional<std::string>& device_id) {
     DispatchToUi([this, text, device_id] {
         ApplyOverlayStyle(device_id);
-        if (overlay_) overlay_->ShowPausedFinal(text);
+        if (overlay_) overlay_->ShowPausedFinal(text, config_.side_button_send);
     });
 }
 
@@ -347,7 +370,14 @@ void Win32App::ShowError(const std::string& text,
                          std::function<void()> on_complete) {
     DispatchToUi([this, text, device_id, on_complete = std::move(on_complete)]() mutable {
         ApplyOverlayStyle(device_id);
-        if (overlay_) overlay_->ShowError(text, std::move(on_complete));
+        static const std::map<std::string, std::string> translations{
+            {"Could not paste text. Focus the input and restore the last input to retry.",
+             "文字填入失败。请聚焦输入框，通过托盘恢复上次输入后重试。"},
+            {"No audio frames from device", "未收到设备音频，请检查蓝牙连接后重试。"},
+            {"Failed to start ASR", "语音识别启动失败，请检查 API 设置。"},
+        };
+        const auto it = translations.find(text);
+        if (overlay_) overlay_->ShowError(it == translations.end() ? text : it->second, std::move(on_complete));
     });
 }
 
@@ -357,9 +387,9 @@ void Win32App::ShowCloudUpgrade(const std::string& message,
     DispatchToUi([this, message, url, device_id] {
         ApplyOverlayStyle(device_id);
         auto show_dialog = [this, message, url] {
-            const auto text = Utf16(message + "\n\nOpen the VoiceStick Cloud page?");
+            const auto text = Utf16(message + "\n\n是否打开 VoiceStick 云服务页面？");
             const int result = MessageBoxW(hwnd_, text.c_str(),
-                                           L"VoiceStick Cloud needs attention",
+                                           L"VoiceStick 云服务提示",
                                            MB_ICONINFORMATION | MB_YESNO | MB_DEFBUTTON1);
             if (result == IDYES) {
                 const auto wide_url = Utf16(url);
@@ -439,7 +469,9 @@ LRESULT Win32App::HandleMessage(UINT message, WPARAM w_param, LPARAM l_param) {
             ShowPairDeviceDialog();
             return 0;
         case kMenuCheckAppUpdates:
+#if VOICESTICK_ENABLE_APP_UPDATES
             win_sparkle_check_update_with_ui();
+#endif
             return 0;
         case kMenuHoldToTalk:
             config_.interaction_mode = InteractionMode::kHoldToTalk;
@@ -451,6 +483,10 @@ LRESULT Win32App::HandleMessage(UINT message, WPARAM w_param, LPARAM l_param) {
             return 0;
         case kMenuAutoEnter:
             config_.auto_enter = !config_.auto_enter;
+            SaveInputOptions();
+            return 0;
+        case kMenuSideButtonSend:
+            config_.side_button_send = !config_.side_button_send;
             SaveInputOptions();
             return 0;
         case kMenuOutputFocusedApp:
@@ -567,6 +603,7 @@ bool Win32App::CreateWindowInternal() {
     if (!hwnd_) return false;
 
     LogLine("Creating overlay window object");
+    input_injector_.SetClipboardOwner(hwnd_);
     overlay_ = std::make_unique<OverlayWindow>(instance_, hwnd_);
     LogLine("Creating subtitle window object");
     subtitles_ = std::make_unique<SubtitleWindow>(instance_, hwnd_);
@@ -586,7 +623,7 @@ void Win32App::AddTrayIcon() {
         LR_DEFAULTCOLOR | LR_SHARED));
     if (!data.hIcon) data.hIcon = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_VOICESTICK_APP));
     if (!data.hIcon) data.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
-    wcscpy_s(data.szTip, L"VoiceStick - Not connected");
+    wcscpy_s(data.szTip, L"VoiceStick - 未连接");
     if (!Shell_NotifyIconW(NIM_ADD, &data)) {
         LogLine("Shell_NotifyIcon NIM_ADD failed: " + std::to_string(GetLastError()));
         return;
@@ -610,12 +647,12 @@ void Win32App::RemoveTrayIcon() {
 
 void Win32App::ShowTrayMenu() {
     HMENU menu = CreatePopupMenu();
-    if (has_recoverable_input_) AppendMenuW(menu, MF_STRING, kMenuRestore, L"Restore Last Input");
-    AppendMenuW(menu, MF_STRING, kMenuPairScan, L"Pair Device...");
+    if (has_recoverable_input_) AppendMenuW(menu, MF_STRING, kMenuRestore, L"恢复上次输入");
+    AppendMenuW(menu, MF_STRING, kMenuPairScan, L"配对设备…");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
     if (paired_device_ids_.empty() && connected_devices_.empty()) {
-        AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, L"No paired VoiceStick devices");
+        AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, L"尚未配对 VoiceStick 设备");
     }
 
     auto find_connected = [&](const std::string& id) -> const ConnectedDevice* {
@@ -635,7 +672,7 @@ void Win32App::ShowTrayMenu() {
         HMENU submenu = CreatePopupMenu();
 
         // Status
-        const wchar_t* status_text = connected ? L"Connected" : L"Scanning...";
+        const wchar_t* status_text = connected ? L"已连接" : L"正在扫描…";
         AppendMenuW(submenu, MF_STRING | MF_DISABLED, 0, status_text);
 
         // Hardware + firmware version
@@ -667,7 +704,7 @@ void Win32App::ShowTrayMenu() {
                 kMenuThemeColorBase + static_cast<UINT>(i * kMenuOptionsPerDevice + color_index),
                 Utf16(OverlayThemeColorDisplayName(color)).c_str());
         }
-        AppendMenuW(submenu, MF_POPUP, reinterpret_cast<UINT_PTR>(theme_menu), L"Theme Color");
+        AppendMenuW(submenu, MF_POPUP, reinterpret_cast<UINT_PTR>(theme_menu), L"主题颜色");
 
         HMENU position_menu = CreatePopupMenu();
         const auto position_it = config_.device_overlay_positions.find(id);
@@ -684,7 +721,7 @@ void Win32App::ShowTrayMenu() {
                 kMenuOverlayPositionBase + static_cast<UINT>(i * kMenuOptionsPerDevice + position_index),
                 Utf16(OverlayPositionDisplayName(position)).c_str());
         }
-        AppendMenuW(submenu, MF_POPUP, reinterpret_cast<UINT_PTR>(position_menu), L"Overlay Position");
+        AppendMenuW(submenu, MF_POPUP, reinterpret_cast<UINT_PTR>(position_menu), L"悬浮窗位置");
 
         HMENU translation_menu = CreatePopupMenu();
         const auto current_profile = config_.OutputProfileForDevice(id);
@@ -692,42 +729,42 @@ void Win32App::ShowTrayMenu() {
             translation_menu,
             MF_STRING | (current_profile.transform == TextTransform::kOriginal ? MF_CHECKED : 0),
             kMenuTranslationBase + static_cast<UINT>(i * kMenuTranslationsPerDevice),
-            L"Original");
+            L"保留原文");
         AppendMenuW(translation_menu, MF_SEPARATOR, 0, nullptr);
         for (std::size_t target_index = 0; target_index < std::size(kTranslationTargets); ++target_index) {
             const auto& target = kTranslationTargets[target_index];
             const auto checked = current_profile.transform == TextTransform::kTranslate &&
                                  current_profile.translation_target == target.code;
-            auto title = std::wstring(L"Translate to ") + target.name;
+            auto title = std::wstring(L"翻译为：") + target.name;
             AppendMenuW(
                 translation_menu,
                 MF_STRING | (checked ? MF_CHECKED : 0),
                 kMenuTranslationBase + static_cast<UINT>(i * kMenuTranslationsPerDevice + target_index + 1),
                 title.c_str());
         }
-        AppendMenuW(submenu, MF_POPUP, reinterpret_cast<UINT_PTR>(translation_menu), L"Translation");
+        AppendMenuW(submenu, MF_POPUP, reinterpret_cast<UINT_PTR>(translation_menu), L"文本翻译");
 
         if (firmware_it != firmware_info_map_.end()) {
             const auto& firmware = firmware_it->second;
             if (firmware.is_checking) {
-                AppendMenuW(submenu, MF_STRING | MF_DISABLED, 0, L"Checking for firmware updates...");
+                AppendMenuW(submenu, MF_STRING | MF_DISABLED, 0, L"正在检查固件更新…");
             } else if (!firmware.error_message.empty()) {
-                auto error_text = L"Firmware Check Failed";
+                auto error_text = L"固件检查失败";
                 AppendMenuW(submenu, MF_STRING | MF_DISABLED, 0, error_text);
             } else if (firmware.update_available && !firmware.latest_version.empty()) {
-                auto update_text = L"Update available: " + Utf16(firmware.latest_version);
+                auto update_text = L"可更新版本：" + Utf16(firmware.latest_version);
                 AppendMenuW(submenu, MF_STRING | MF_DISABLED, 0, update_text.c_str());
-                auto update_action = L"Update to " + Utf16(firmware.latest_version) + L"...";
+                auto update_action = L"更新至 " + Utf16(firmware.latest_version) + L"...";
                 AppendMenuW(submenu,
                             connected ? MF_STRING : (MF_STRING | MF_DISABLED),
                             kMenuUpdateFirmwareBase + static_cast<UINT>(i),
                             update_action.c_str());
             } else if (!firmware.latest_version.empty() && !firmware.current_version.empty()) {
-                AppendMenuW(submenu, MF_STRING | MF_DISABLED, 0, L"Firmware Up to Date");
+                AppendMenuW(submenu, MF_STRING | MF_DISABLED, 0, L"固件已是最新版本");
             } else if (!firmware.latest_version.empty()) {
-                auto latest_text = L"Latest firmware " + Utf16(firmware.latest_version);
+                auto latest_text = L"最新固件 " + Utf16(firmware.latest_version);
                 AppendMenuW(submenu, MF_STRING | MF_DISABLED, 0, latest_text.c_str());
-                auto update_action = L"Update to " + Utf16(firmware.latest_version) + L"...";
+                auto update_action = L"更新至 " + Utf16(firmware.latest_version) + L"...";
                 AppendMenuW(submenu,
                             connected ? MF_STRING : (MF_STRING | MF_DISABLED),
                             kMenuUpdateFirmwareBase + static_cast<UINT>(i),
@@ -737,7 +774,7 @@ void Win32App::ShowTrayMenu() {
 
         AppendMenuW(submenu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(submenu, MF_STRING, kMenuForgetBase + static_cast<UINT>(i),
-                    L"Forget This Device");
+                    L"取消配对");
 
         AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), Utf16(title).c_str());
     }
@@ -747,33 +784,42 @@ void Win32App::ShowTrayMenu() {
     AppendMenuW(interaction_menu,
                 MF_STRING | (config_.interaction_mode == InteractionMode::kHoldToTalk ? MF_CHECKED : 0),
                 kMenuHoldToTalk,
-                L"Hold to Talk");
+                L"按住说话");
     AppendMenuW(interaction_menu,
                 MF_STRING | (config_.interaction_mode == InteractionMode::kClickToTalk ? MF_CHECKED : 0),
                 kMenuClickToTalk,
-                L"Click to Talk");
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(interaction_menu), L"Interaction");
+                L"点击说话");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(interaction_menu), L"录音方式");
 
     HMENU output_menu = CreatePopupMenu();
     AppendMenuW(output_menu,
                 MF_STRING | (config_.default_output_profile.target == OutputTarget::kFocusedApp ? MF_CHECKED : 0),
                 kMenuOutputFocusedApp,
-                L"Focused App");
+                L"当前输入框");
     AppendMenuW(output_menu,
                 MF_STRING | (config_.default_output_profile.target == OutputTarget::kSubtitle ? MF_CHECKED : 0),
                 kMenuOutputSubtitle,
-                L"Subtitle");
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(output_menu), L"Output");
+                L"实时字幕");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(output_menu), L"输出方式");
 
     AppendMenuW(menu,
-                MF_STRING | (config_.auto_enter ? MF_CHECKED : 0),
+                MF_STRING | (config_.side_button_send ? MF_CHECKED : 0),
+                kMenuSideButtonSend,
+                L"按侧键确认发送");
+    AppendMenuW(menu,
+                MF_STRING | (config_.side_button_send ? MF_GRAYED : 0) |
+                    (config_.auto_enter && !config_.side_button_send ? MF_CHECKED : 0),
                 kMenuAutoEnter,
-                L"Press Return After Paste");
+                L"填入后自动回车");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, kMenuSettings, L"Settings...");
-    AppendMenuW(menu, MF_STRING, kMenuCheckAppUpdates, L"Check for App Updates...");
+    AppendMenuW(menu, MF_STRING, kMenuSettings, L"设置…");
+#if VOICESTICK_ENABLE_APP_UPDATES
+    AppendMenuW(menu, MF_STRING, kMenuCheckAppUpdates, L"检查客户端更新…");
+#else
+    AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, L"中文定制版（保留本地功能）");
+#endif
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, kMenuQuit, L"Quit");
+    AppendMenuW(menu, MF_STRING, kMenuQuit, L"退出");
     POINT point{};
     GetCursorPos(&point);
     SetForegroundWindow(hwnd_);
@@ -870,7 +916,7 @@ void Win32App::RebuildTooltip() {
     data.uID = kTrayIconId;
     data.uFlags = NIF_TIP | NIF_SHOWTIP;
     auto tip = Utf16(std::string("VoiceStick - ") +
-                     (connected_devices_.empty() ? "Not connected" : "Connected"));
+                     (connected_devices_.empty() ? "未连接" : "已连接") + "\n" + status_);
     wcsncpy_s(data.szTip, tip.c_str(), _TRUNCATE);
     Shell_NotifyIconW(NIM_MODIFY, &data);
 }
@@ -956,8 +1002,8 @@ void Win32App::StartFirmwareUpdate(const std::string& device_id) {
             DispatchToUi([this, success, message] {
                 if (firmware_update_dialog_) firmware_update_dialog_->Finish(success, message);
                 if (success) {
-                    ShowNotification("VoiceStick firmware updated",
-                                     "The device is rebooting into the new firmware.");
+                    ShowNotification("VoiceStick 固件更新完成",
+                                     "设备正在重启，以应用新固件。");
                 }
             });
         });

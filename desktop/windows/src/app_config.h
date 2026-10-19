@@ -90,6 +90,7 @@ struct AppConfig {
     OutputProfile default_output_profile;
     std::map<std::string, OutputProfile> device_output_profiles;
     bool auto_enter = true;
+    bool side_button_send = true;
     bool debug_audio_cache = false;
     std::filesystem::path debug_audio_directory;
 

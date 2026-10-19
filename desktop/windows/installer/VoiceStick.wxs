@@ -2,15 +2,20 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
-  <Package Name="VoiceStick"
+  <?ifndef ProductName ?>
+    <?define ProductName="VoiceStick" ?>
+  <?endif ?>
+
+  <Package Name="$(var.ProductName)"
            Manufacturer="TenClass"
            Version="$(var.ProductVersion)"
            UpgradeCode="EA755DA7-1A4E-4ED2-8051-4E31B55FCA6B"
            Scope="perMachine"
+           Language="2052"
            InstallerVersion="500"
            Compressed="yes">
 
-    <MajorUpgrade DowngradeErrorMessage="!(loc.DowngradeError)" />
+    <MajorUpgrade DowngradeErrorMessage="!(loc.DowngradeError)" AllowSameVersionUpgrades="yes" />
     <MediaTemplate EmbedCab="yes" />
 
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
@@ -34,6 +39,9 @@
       <Directory Id="INSTALLFOLDER" Name="VoiceStick">
         <Component Id="VoiceStickExe" Guid="*" Bitness="always64">
           <File Id="VoiceStickExeFile" Source="$(var.BuildDir)\VoiceStick.exe" KeyPath="yes" />
+          <?ifdef NoticesFile ?>
+            <File Id="ThirdPartyNotices" Source="$(var.NoticesFile)" />
+          <?endif ?>
         </Component>
         <Component Id="WinSparkleDll" Guid="*" Bitness="always64">
           <File Id="WinSparkleDllFile" Source="$(var.BuildDir)\WinSparkle.dll" KeyPath="yes" />

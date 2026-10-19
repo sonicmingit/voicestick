@@ -20,7 +20,7 @@ target = "focused_app"
 transform = "original"
 translation_target = "en"
 
-# Optional per-device output overrides:
+# 可选：单独覆盖某台设备的输出设置：
 # [device.C3D8.output]
 # transform = "translate"
 # translation_target = "en"

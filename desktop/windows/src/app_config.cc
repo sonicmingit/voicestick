@@ -248,6 +248,7 @@ void ApplyConfigValue(AppConfig& config, const std::string& key, const std::stri
     if (key == "text_transform") config.default_output_profile.transform = TextTransformFromName(value);
     if (key == "translation_target" && !value.empty()) config.default_output_profile.translation_target = value;
     if (key == "auto_enter") config.auto_enter = BoolValue(value, config.auto_enter);
+    if (key == "side_button_send") config.side_button_send = BoolValue(value, config.side_button_send);
     if (key == "debug_audio_cache") config.debug_audio_cache = BoolValue(value, config.debug_audio_cache);
     if (key == "debug_audio_dir" && !value.empty()) config.debug_audio_directory = std::filesystem::path(value);
     if (key == "paired_device") {
@@ -340,6 +341,7 @@ AppConfig AppConfig::Load() {
             }
         }
         if (auto value = TomlBool(table, "auto_enter")) config.auto_enter = *value;
+        if (auto value = TomlBool(table, "side_button_send")) config.side_button_send = *value;
         if (auto value = TomlBool(table, "debug_audio_cache")) config.debug_audio_cache = *value;
         if (auto value = TomlString(table, "debug_audio_dir"); value && !value->empty()) {
             config.debug_audio_directory = std::filesystem::path(*value);
@@ -389,6 +391,7 @@ void AppConfig::Save() const {
     output << "device_overlay_positions = \"" << TomlEscape(FormatDeviceValueMap<OverlayPosition>(
         device_overlay_positions, paired_device_ids, OverlayPosition::kCenter, OverlayPositionName)) << "\"\n";
     output << "auto_enter = " << (auto_enter ? "true" : "false") << "\n";
+    output << "side_button_send = " << (side_button_send ? "true" : "false") << "\n";
     output << "debug_audio_cache = " << (debug_audio_cache ? "true" : "false") << "\n";
     output << "debug_audio_dir = \"" << TomlEscape(debug_audio_directory.string()) << "\"\n";
     if (!paired_devices.empty()) {
@@ -533,14 +536,14 @@ OverlayThemeColor OverlayThemeColorFromName(std::string_view name) {
 
 std::string OverlayThemeColorDisplayName(OverlayThemeColor color) {
     switch (color) {
-    case OverlayThemeColor::kPink: return "Pink";
-    case OverlayThemeColor::kGreen: return "Green";
-    case OverlayThemeColor::kYellow: return "Yellow";
-    case OverlayThemeColor::kBlue: return "Blue";
-    case OverlayThemeColor::kPurple: return "Purple";
+    case OverlayThemeColor::kPink: return "粉色";
+    case OverlayThemeColor::kGreen: return "绿色";
+    case OverlayThemeColor::kYellow: return "黄色";
+    case OverlayThemeColor::kBlue: return "蓝色";
+    case OverlayThemeColor::kPurple: return "紫色";
     case OverlayThemeColor::kWhite:
     default:
-        return "White";
+        return "白色";
     }
 }
 
@@ -566,13 +569,13 @@ OverlayPosition OverlayPositionFromName(std::string_view name) {
 
 std::string OverlayPositionDisplayName(OverlayPosition position) {
     switch (position) {
-    case OverlayPosition::kTopLeft: return "Top Left";
-    case OverlayPosition::kTopRight: return "Top Right";
-    case OverlayPosition::kBottomLeft: return "Bottom Left";
-    case OverlayPosition::kBottomRight: return "Bottom Right";
+    case OverlayPosition::kTopLeft: return "左上角";
+    case OverlayPosition::kTopRight: return "右上角";
+    case OverlayPosition::kBottomLeft: return "左下角";
+    case OverlayPosition::kBottomRight: return "右下角";
     case OverlayPosition::kCenter:
     default:
-        return "Center";
+        return "居中";
     }
 }
 
@@ -585,7 +588,7 @@ OutputTarget OutputTargetFromName(std::string_view name) {
 }
 
 std::string OutputTargetDisplayName(OutputTarget target) {
-    return target == OutputTarget::kSubtitle ? "Subtitle" : "Focused App";
+    return target == OutputTarget::kSubtitle ? "实时字幕" : "当前输入框";
 }
 
 std::string TextTransformName(TextTransform transform) {
@@ -597,7 +600,7 @@ TextTransform TextTransformFromName(std::string_view name) {
 }
 
 std::string TextTransformDisplayName(TextTransform transform) {
-    return transform == TextTransform::kTranslate ? "Translate" : "Original";
+    return transform == TextTransform::kTranslate ? "翻译" : "原文";
 }
 
 std::vector<std::string> ParseDeviceIdList(std::string_view text) {

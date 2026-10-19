@@ -22,7 +22,8 @@ public:
     void ShowListening();
     void ShowPartial(const std::string& text);
     void ShowFinalCountdown(const std::string& text, std::function<void()> on_complete);
-    void ShowPausedFinal(const std::string& text);
+    void ShowPausedFinal(const std::string& text, bool side_button_send = false);
+    void ShowSendReady(bool original_window_required = false);
     void ShowError(const std::string& text, std::function<void()> on_complete);
     void Hide(std::function<void()> on_hidden = {});
     void SetThemeColor(OverlayThemeColor color);

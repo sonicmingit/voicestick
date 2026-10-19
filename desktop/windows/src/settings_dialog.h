@@ -48,6 +48,7 @@ private:
     HWND llm_api_key_edit_ = nullptr;
     HWND llm_model_edit_ = nullptr;
     HWND debug_audio_check_ = nullptr;
+    HWND side_button_send_check_ = nullptr;
     HWND debug_dir_edit_ = nullptr;
     HWND resource_label_ = nullptr;
     HFONT ui_font_ = nullptr;
@@ -56,7 +57,7 @@ private:
     std::vector<HWND> label_controls_;
 
     static constexpr int kClientWidth = 640;
-    static constexpr int kClientHeight = 500;
+    static constexpr int kClientHeight = 550;
     static constexpr UINT kIdProviderCombo = 2001;
     static constexpr UINT kIdApiKeyEdit = 2002;
     static constexpr UINT kIdResourceCombo = 2003;
@@ -70,6 +71,7 @@ private:
     static constexpr UINT kIdSave = 2011;
     static constexpr UINT kIdCancel = 2012;
     static constexpr UINT kIdApplyTrialApiKey = 2013;
+    static constexpr UINT kIdSideButtonSend = 2014;
 };
 
 } // namespace voicestick

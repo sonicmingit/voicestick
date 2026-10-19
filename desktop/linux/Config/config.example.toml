@@ -12,7 +12,7 @@ paired_device_ids = ""
 device_theme_colors = ""
 device_overlay_positions = ""
 auto_enter = true
-# Milliseconds to wait after recognition before auto-paste. 0 pastes immediately.
+# 识别完成到自动粘贴之间等待的毫秒数；设为 0 则立即粘贴。
 confirmation_countdown_ms = 1000
 debug_audio_cache = false
 # debug_audio_dir = "~/.local/share/voicestick/DebugAudio"

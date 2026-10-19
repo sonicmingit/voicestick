@@ -1,16 +1,21 @@
 #include "input_injector_win.h"
 
-#include <vector>
-
 namespace voicestick {
 
-void InputInjectorWin::Paste(const std::string& text, bool press_enter) {
-    if (text.empty()) return;
+bool InputInjectorWin::Paste(const std::string& text, bool press_enter) {
+    last_paste_window_ = nullptr;
+    if (text.empty()) return false;
     const std::wstring wide = Utf16FromUtf8(text);
-    if (wide.empty()) return;
+    if (wide.empty()) return false;
+    const HWND target_window = GetForegroundWindow();
+    if (!target_window || !IsWindow(clipboard_owner_)) return false;
 
-    if (OpenClipboard(nullptr)) {
-        EmptyClipboard();
+    bool clipboard_ready = false;
+    for (int attempt = 0; attempt < 5; ++attempt) {
+        if (!OpenClipboard(clipboard_owner_)) {
+            Sleep(10);
+            continue;
+        }
         const SIZE_T bytes = (wide.size() + 1) * sizeof(wchar_t);
         HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
         if (memory != nullptr) {
@@ -18,20 +23,26 @@ void InputInjectorWin::Paste(const std::string& text, bool press_enter) {
             if (target != nullptr) {
                 memcpy(target, wide.c_str(), bytes);
                 GlobalUnlock(memory);
-                SetClipboardData(CF_UNICODETEXT, memory);
-                memory = nullptr;
+                if (EmptyClipboard() && SetClipboardData(CF_UNICODETEXT, memory)) {
+                    clipboard_ready = true;
+                    memory = nullptr;
+                }
             }
             if (memory != nullptr) GlobalFree(memory);
         }
         CloseClipboard();
+        break;
     }
+    if (!clipboard_ready) return false;
 
     Sleep(40);
-    SendCtrlV();
+    if (GetForegroundWindow() != target_window || !SendCtrlV()) return false;
+    last_paste_window_ = target_window;
     if (press_enter) {
         Sleep(120);
-        SendEnter();
+        return SendEnter();
     }
+    return true;
 }
 
 std::wstring InputInjectorWin::Utf16FromUtf8(const std::string& text) {
@@ -42,24 +53,27 @@ std::wstring InputInjectorWin::Utf16FromUtf8(const std::string& text) {
     return wide;
 }
 
-void InputInjectorWin::SendKey(WORD virtual_key, bool key_down, DWORD flags) {
-    INPUT input{};
-    input.type = INPUT_KEYBOARD;
-    input.ki.wVk = virtual_key;
-    input.ki.dwFlags = flags | (key_down ? 0 : KEYEVENTF_KEYUP);
-    SendInput(1, &input, sizeof(INPUT));
+bool InputInjectorWin::SendCtrlV() {
+    INPUT inputs[4]{};
+    for (auto& input : inputs) input.type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = inputs[3].ki.wVk = VK_CONTROL;
+    inputs[1].ki.wVk = inputs[2].ki.wVk = 'V';
+    inputs[2].ki.dwFlags = inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+    return SendInput(4, inputs, sizeof(INPUT)) == 4;
 }
 
-void InputInjectorWin::SendCtrlV() {
-    SendKey(VK_CONTROL, true);
-    SendKey('V', true);
-    SendKey('V', false);
-    SendKey(VK_CONTROL, false);
-}
-
-void InputInjectorWin::SendEnter() {
-    SendKey(VK_RETURN, true);
-    SendKey(VK_RETURN, false);
+bool InputInjectorWin::SendEnter() {
+    if (!last_paste_window_ || !IsWindow(last_paste_window_) ||
+        GetForegroundWindow() != last_paste_window_) return false;
+    INPUT inputs[2]{};
+    for (auto& input : inputs) {
+        input.type = INPUT_KEYBOARD;
+        input.ki.wVk = VK_RETURN;
+    }
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    if (SendInput(2, inputs, sizeof(INPUT)) != 2) return false;
+    last_paste_window_ = nullptr;
+    return true;
 }
 
 } // namespace voicestick

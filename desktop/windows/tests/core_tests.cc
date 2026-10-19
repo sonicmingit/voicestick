@@ -182,11 +182,22 @@ public:
 
 class FakeInputInjector : public InputInjector {
 public:
-    void Paste(const std::string& text, bool press_enter) override {
+    bool Paste(const std::string& text, bool press_enter) override {
+        ++paste_count;
         pasted_text = text;
         pasted_enter = press_enter;
+        return paste_result;
+    }
+    bool SendEnter() override {
+        if (!send_result) return false;
+        ++enter_count;
+        return true;
     }
 
+    bool paste_result = true;
+    bool send_result = true;
+    int paste_count = 0;
+    int enter_count = 0;
     std::string pasted_text;
     bool pasted_enter = false;
 };
@@ -382,6 +393,7 @@ void TestAsrProtocol() {
 void TestAppConfig() {
     AppConfig cloud = AppConfig::Defaults();
     assert(cloud.asr_provider == AsrProvider::kVoiceStickCloud);
+    assert(cloud.side_button_send);
     cloud.asr_provider = AsrProvider::kVoiceStickCloud;
     cloud.voicestick_cloud_url = "";
     assert(cloud.ActiveWebsocketUrl() == "wss://api.xiaozhi.me/voicestick/asr/");
@@ -407,10 +419,10 @@ void TestAppConfig() {
     assert(cache.paired_devices.front().firmware_version == "0.1.2");
     assert(OverlayThemeColorFromName("pink") == OverlayThemeColor::kPink);
     assert(OverlayThemeColorName(OverlayThemeColor::kGreen) == "green");
-    assert(OverlayThemeColorDisplayName(OverlayThemeColor::kYellow) == "Yellow");
+    assert(OverlayThemeColorDisplayName(OverlayThemeColor::kYellow) == "黄色");
     assert(OverlayPositionFromName("top_right") == OverlayPosition::kTopRight);
     assert(OverlayPositionName(OverlayPosition::kBottomLeft) == "bottom_left");
-    assert(OverlayPositionDisplayName(OverlayPosition::kCenter) == "Center");
+    assert(OverlayPositionDisplayName(OverlayPosition::kCenter) == "居中");
     cache.default_output_profile.target = OutputTarget::kSubtitle;
     cache.default_output_profile.transform = TextTransform::kOriginal;
     cache.device_output_profiles["5A74"] = OutputProfile{
@@ -501,7 +513,9 @@ void TestCoordinatorSecondaryCancelsFinalizing() {
     auto* asr_ptr = asr.get();
     FakeUi ui;
     FakeInputInjector input;
-    VoiceStickCoordinator coordinator(AppConfig::Defaults(), std::move(ble), std::move(asr), &ui, &input);
+    AppConfig config = AppConfig::Defaults();
+    config.side_button_send = false;
+    VoiceStickCoordinator coordinator(config, std::move(ble), std::move(asr), &ui, &input);
     coordinator.Start();
 
     ble_ptr->on_state_event("5A74", ButtonEvent("button_down", "primary", 8));
@@ -548,7 +562,9 @@ void TestCoordinatorPrimaryPausesPendingConfirmation() {
     auto* asr_ptr = asr.get();
     FakeUi ui;
     FakeInputInjector input;
-    VoiceStickCoordinator coordinator(AppConfig::Defaults(), std::move(ble), std::move(asr), &ui, &input);
+    AppConfig config = AppConfig::Defaults();
+    config.side_button_send = false;
+    VoiceStickCoordinator coordinator(config, std::move(ble), std::move(asr), &ui, &input);
     coordinator.Start();
 
     ble_ptr->on_state_event("5A74", ButtonEvent("button_down", "primary", 9));
@@ -566,6 +582,134 @@ void TestCoordinatorPrimaryPausesPendingConfirmation() {
     assert(ui.paused_finals.back() == "hello");
     assert(ble_ptr->sent_ui_states.back().state == "pending_confirmation");
     assert(ble_ptr->sent_ui_states.back().text == "hello");
+}
+
+void TestCoordinatorSideButtonSendsAfterPaste() {
+    for (const auto mode : {InteractionMode::kHoldToTalk, InteractionMode::kClickToTalk}) {
+        for (const bool auto_enter : {false, true}) {
+            auto ble = std::make_unique<FakeBleCentral>();
+            auto* ble_ptr = ble.get();
+            auto asr = std::make_unique<FakeAsrClient>();
+            auto* asr_ptr = asr.get();
+            FakeUi ui;
+            FakeInputInjector input;
+            AppConfig config = AppConfig::Defaults();
+            config.interaction_mode = mode;
+            config.auto_enter = auto_enter;
+            VoiceStickCoordinator coordinator(config, std::move(ble), std::move(asr), &ui, &input);
+            coordinator.Start();
+
+            ble_ptr->on_state_event("5A74", ButtonEvent("button_click", "secondary"));
+            assert(input.enter_count == 0);
+            const bool click = mode == InteractionMode::kClickToTalk;
+            ble_ptr->on_state_event("5A74", ButtonEvent(click ? "button_click" : "button_down", "primary", 30));
+            ble_ptr->on_audio_frame("5A74", AudioDataFrame(30, 1));
+            ble_ptr->on_state_event("5A74", ButtonEvent("button_click", "secondary"));
+            assert(!asr_ptr->cancelled);
+            std::this_thread::sleep_for(std::chrono::milliseconds(520));
+            ble_ptr->on_state_event("5A74", ButtonEvent(click ? "button_click" : "button_up", "primary", 30));
+            ble_ptr->on_audio_frame("5A74", EmptyEndFrame(30, 2));
+            ble_ptr->on_state_event("5A74", ButtonEvent("button_click", "secondary"));
+            assert(!asr_ptr->cancelled);
+            assert(input.enter_count == 0);
+            asr_ptr->on_final("hello");
+
+            // Fill the input immediately, without a countdown or Return.
+            assert(input.enter_count == 0);
+            assert(!ui.final_countdown_completion);
+            assert(input.paste_count == 1);
+            assert(input.pasted_text == "hello");
+            assert(!input.pasted_enter);
+            assert(ui.statuses.back() == "Side button: Send");
+
+            // A changed foreground window must allow a later retry without re-pasting.
+            input.send_result = false;
+            ble_ptr->on_state_event("5A74", ButtonEvent("button_click", "secondary"));
+            assert(input.enter_count == 0);
+            assert(ui.statuses.back() == "Return to original input to send");
+            input.send_result = true;
+
+            ble_ptr->on_state_event("6B85", ButtonEvent("button_click", "secondary"));
+            ble_ptr->on_state_event("5A74", ButtonEvent("button_down", "secondary"));
+            assert(input.enter_count == 0);
+            // Both current firmware clicks and legacy releases are supported.
+            ble_ptr->on_state_event("5A74", ButtonEvent(click ? "button_click" : "button_up", "secondary"));
+            assert(input.enter_count == 1);
+            ble_ptr->on_state_event("5A74", ButtonEvent("button_click", "secondary"));
+            assert(input.enter_count == 1);
+            assert(input.paste_count == 1);
+            assert(ui.paused_finals.empty());
+        }
+    }
+}
+
+void TestCoordinatorSideButtonSendCleared() {
+    for (const int reset_case : {0, 1, 2, 3, 4}) {
+        auto ble = std::make_unique<FakeBleCentral>();
+        auto* ble_ptr = ble.get();
+        auto asr = std::make_unique<FakeAsrClient>();
+        auto* asr_ptr = asr.get();
+        FakeUi ui;
+        FakeInputInjector input;
+        AppConfig config = AppConfig::Defaults();
+        VoiceStickCoordinator coordinator(config, std::move(ble), std::move(asr), &ui, &input);
+        coordinator.Start();
+        ble_ptr->on_state_event("5A74", ButtonEvent("button_down", "primary", 31));
+        ble_ptr->on_audio_frame("5A74", AudioDataFrame(31, 1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(520));
+        ble_ptr->on_state_event("5A74", ButtonEvent("button_up", "primary", 31));
+        ble_ptr->on_audio_frame("5A74", EmptyEndFrame(31, 2));
+        input.paste_result = reset_case != 4;
+        asr_ptr->on_final("hello");
+        assert(input.paste_count == 1);
+        if (reset_case == 4) {
+            assert(!ui.errors.empty());
+            ble_ptr->on_state_event("5A74", ButtonEvent("button_click", "secondary"));
+            assert(input.enter_count == 0);
+            ui.error_completion();
+            assert(coordinator.RestoreLastInputConfirmation());
+            input.paste_result = true;
+            ble_ptr->on_state_event("5A74", ButtonEvent("button_down", "primary"));
+            assert(input.paste_count == 2);
+            assert(!input.pasted_enter);
+            ble_ptr->on_state_event("5A74", ButtonEvent("button_click", "secondary"));
+            assert(input.enter_count == 1);
+            continue;
+        }
+        if (reset_case == 0) {
+            ble_ptr->on_state_event("5A74", ButtonEvent("button_down", "primary", 32));
+        } else if (reset_case == 1) {
+            ble_ptr->on_connection_change({});
+        } else if (reset_case == 2) {
+            coordinator.UpdateConfig(config);
+        } else {
+            assert(coordinator.RestoreLastInputConfirmation());
+        }
+        ble_ptr->on_state_event("5A74", ButtonEvent("button_click", "secondary"));
+        assert(input.enter_count == 0);
+    }
+}
+
+void TestCoordinatorLegacyAutoEnter() {
+    auto ble = std::make_unique<FakeBleCentral>();
+    auto* ble_ptr = ble.get();
+    auto asr = std::make_unique<FakeAsrClient>();
+    auto* asr_ptr = asr.get();
+    FakeUi ui;
+    FakeInputInjector input;
+    AppConfig config = AppConfig::Defaults();
+    config.side_button_send = false;
+    VoiceStickCoordinator coordinator(config, std::move(ble), std::move(asr), &ui, &input);
+    coordinator.Start();
+    ble_ptr->on_state_event("5A74", ButtonEvent("button_down", "primary", 33));
+    ble_ptr->on_audio_frame("5A74", AudioDataFrame(33, 1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(520));
+    ble_ptr->on_state_event("5A74", ButtonEvent("button_up", "primary", 33));
+    ble_ptr->on_audio_frame("5A74", EmptyEndFrame(33, 2));
+    asr_ptr->on_final("hello");
+    ui.final_countdown_completion();
+    assert(input.paste_count == 1);
+    assert(input.pasted_enter);
 }
 
 void TestCoordinatorOtherDeviceDuringRecordingGetsReady() {
@@ -834,6 +978,9 @@ int main() {
     TestCoordinatorSecondaryCancelsFinalizing();
     TestCoordinatorAcceptsAudioFramesAfterButtonUpUntilEnd();
     TestCoordinatorPrimaryPausesPendingConfirmation();
+    TestCoordinatorSideButtonSendsAfterPaste();
+    TestCoordinatorSideButtonSendCleared();
+    TestCoordinatorLegacyAutoEnter();
     TestCoordinatorOtherDeviceDuringRecordingGetsReady();
     TestCoordinatorSubtitleOutputSkipsPaste();
     TestCoordinatorSubtitleFinalDoesNotBlockNextSession();

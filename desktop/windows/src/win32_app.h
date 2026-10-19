@@ -94,7 +94,7 @@ private:
     std::unique_ptr<OverlayWindow> overlay_;
     std::unique_ptr<SubtitleWindow> subtitles_;
     class BleCentralWin* ble_central_ = nullptr;
-    std::string status_ = "Ready";
+    std::string status_ = "就绪";
     std::vector<ConnectedDevice> connected_devices_;
     std::vector<std::string> paired_device_ids_;
     std::map<std::string, DeviceInfo> device_info_map_;

@@ -121,7 +121,8 @@ public:
 class InputInjector {
 public:
     virtual ~InputInjector() = default;
-    virtual void Paste(const std::string& text, bool press_enter) = 0;
+    virtual bool Paste(const std::string& text, bool press_enter) = 0;
+    virtual bool SendEnter() = 0;
 };
 
 class VoiceStickCoordinator {
@@ -300,6 +301,7 @@ private:
     PendingPasteState pending_paste_state_;
     std::optional<std::string> last_recoverable_text_;
     std::optional<std::string> last_recoverable_device_id_;
+    std::optional<std::string> pending_send_device_id_;
     std::vector<std::string> paired_device_ids_;
     std::map<std::string, DeviceFirmwareInfo> firmware_info_by_device_id_;
     std::optional<FirmwareManifest> latest_firmware_manifest_;

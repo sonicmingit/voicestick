@@ -234,7 +234,7 @@ SubtitleWindow::SubtitleWindow(HINSTANCE instance, HWND parent)
     hwnd_ = CreateWindowExW(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
         wc.lpszClassName,
-        L"VoiceStick Subtitles",
+        L"VoiceStick 字幕",
         WS_POPUP,
         0, 0, 1, 1,
         parent_,

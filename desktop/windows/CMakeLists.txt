@@ -9,6 +9,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+option(VOICESTICK_ENABLE_APP_UPDATES "Enable official app updates" ON)
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
 
 include(FetchContent)
 
@@ -66,6 +70,7 @@ add_executable(VoiceStickApp WIN32
 target_include_directories(VoiceStickApp PRIVATE resources ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_definitions(VoiceStickApp PRIVATE
     VOICESTICK_APPCAST_URL="https://78.github.io/voicestick/appcast.xml"
+    VOICESTICK_ENABLE_APP_UPDATES=$<BOOL:${VOICESTICK_ENABLE_APP_UPDATES}>
 )
 
 set_target_properties(VoiceStickApp PROPERTIES OUTPUT_NAME VoiceStick)
@@ -98,6 +103,9 @@ add_executable(voicestick_windows_tests
 )
 
 target_link_libraries(voicestick_windows_tests PRIVATE voicestick_core)
+if(MSVC)
+    target_compile_options(voicestick_windows_tests PRIVATE /UNDEBUG)
+endif()
 
 enable_testing()
 add_test(NAME voicestick_windows_tests COMMAND voicestick_windows_tests)

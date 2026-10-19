@@ -262,9 +262,9 @@ LPCDLGTEMPLATE SettingsDialog::BuildDialogTemplate() {
     AppendDialogData(&dialog_template_, &dialog_template, sizeof(dialog_template));
     AppendDialogWord(&dialog_template_, 0);
     AppendDialogWord(&dialog_template_, 0);
-    AppendDialogWideString(&dialog_template_, L"VoiceStick Settings");
+    AppendDialogWideString(&dialog_template_, L"VoiceStick 设置");
     AppendDialogWord(&dialog_template_, 9);
-    AppendDialogWideString(&dialog_template_, L"Segoe UI");
+    AppendDialogWideString(&dialog_template_, L"Microsoft YaHei UI");
     return reinterpret_cast<LPCDLGTEMPLATE>(dialog_template_.data());
 }
 
@@ -324,26 +324,26 @@ void SettingsDialog::BuildControls() {
     const int row_h = Dp(28);
     int y = Dp(20);
 
-    remember_label(CreateLabel(hwnd_, L"Provider:", Dp(10), y + Dp(3), label_w,
+    remember_label(CreateLabel(hwnd_, L"识别服务：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
     provider_combo_ = remember(CreateCombo(hwnd_, ctrl_x, y, ctrl_w, Dp(200),
                                            kIdProviderCombo, instance_));
-    SendMessageW(provider_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"VoiceStick Cloud"));
-    SendMessageW(provider_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Volcengine"));
+    SendMessageW(provider_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"VoiceStick 云服务"));
+    SendMessageW(provider_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"火山引擎"));
     y += row_h + Dp(10);
 
-    remember_label(CreateLabel(hwnd_, L"API Key:", Dp(10), y + Dp(3), label_w,
+    remember_label(CreateLabel(hwnd_, L"API 密钥：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
     const int apply_btn_w = Dp(102);
     api_key_edit_ = remember(CreateEdit(hwnd_, ctrl_x, y, ctrl_w - apply_btn_w - Dp(8), Dp(24),
                                         kIdApiKeyEdit, instance_, ES_PASSWORD));
-    apply_trial_button_ = remember(CreateButton(hwnd_, L"Apply Trial",
+    apply_trial_button_ = remember(CreateButton(hwnd_, L"申请试用",
                                                 ctrl_x + ctrl_w - apply_btn_w, y,
                                                 apply_btn_w, Dp(24),
                                                 kIdApplyTrialApiKey, instance_));
     y += row_h + Dp(10);
 
-    resource_label_ = remember_label(CreateLabel(hwnd_, L"Resource ID:", Dp(10),
+    resource_label_ = remember_label(CreateLabel(hwnd_, L"资源 ID：", Dp(10),
                                                  y + Dp(3), label_w, Dp(20), instance_));
     resource_combo_ = remember(CreateCombo(hwnd_, ctrl_x, y, ctrl_w, Dp(200),
                                            kIdResourceCombo, instance_));
@@ -353,53 +353,60 @@ void SettingsDialog::BuildControls() {
     }
     y += row_h + Dp(16);
 
-    remember_label(CreateLabel(hwnd_, L"Hotwords:", Dp(10), y + Dp(3), label_w,
+    remember_label(CreateLabel(hwnd_, L"识别热词：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
     hotwords_edit_ = remember(CreateMultilineEdit(hwnd_, ctrl_x, y, ctrl_w, Dp(74),
                                                   kIdHotwordsEdit, instance_));
     y += Dp(80);
-    remember_label(CreateLeftLabel(hwnd_, L"Separate hotwords with commas or new lines.",
+    remember_label(CreateLeftLabel(hwnd_, L"多个热词请用逗号或换行分隔。",
                                    ctrl_x, y, ctrl_w, Dp(16), instance_));
     y += Dp(26);
 
-    remember_label(CreateLabel(hwnd_, L"LLM Base URL:", Dp(10), y + Dp(3), label_w,
+    remember_label(CreateLabel(hwnd_, L"模型接口地址：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
     llm_base_url_edit_ = remember(CreateEdit(hwnd_, ctrl_x, y, ctrl_w, Dp(24),
                                              kIdLlmBaseUrlEdit, instance_));
     y += row_h + Dp(10);
 
-    remember_label(CreateLabel(hwnd_, L"LLM API Key:", Dp(10), y + Dp(3), label_w,
+    remember_label(CreateLabel(hwnd_, L"模型 API 密钥：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
     llm_api_key_edit_ = remember(CreateEdit(hwnd_, ctrl_x, y, ctrl_w, Dp(24),
                                             kIdLlmApiKeyEdit, instance_, ES_PASSWORD));
     y += row_h + Dp(10);
 
-    remember_label(CreateLabel(hwnd_, L"LLM Model:", Dp(10), y + Dp(3), label_w,
+    remember_label(CreateLabel(hwnd_, L"模型名称：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
     llm_model_edit_ = remember(CreateEdit(hwnd_, ctrl_x, y, ctrl_w, Dp(24),
                                           kIdLlmModelEdit, instance_));
     y += row_h + Dp(16);
 
-    remember_label(CreateLabel(hwnd_, L"Debug:", Dp(10), y + Dp(3), label_w,
+    remember_label(CreateLabel(hwnd_, L"发送方式：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
-    debug_audio_check_ = remember(CreateButton(hwnd_, L"Save debug audio files", ctrl_x, y,
+    side_button_send_check_ = remember(CreateButton(hwnd_, L"文字填入后，按侧键回车发送", ctrl_x, y,
+                                                     ctrl_w, Dp(22), kIdSideButtonSend, instance_,
+                                                     BS_AUTOCHECKBOX));
+    y += row_h + Dp(10);
+
+    remember_label(CreateLabel(hwnd_, L"调试选项：", Dp(10), y + Dp(3), label_w,
+                               Dp(20), instance_));
+    debug_audio_check_ = remember(CreateButton(hwnd_, L"保存调试音频文件", ctrl_x, y,
                                                ctrl_w, Dp(22), kIdDebugAudio, instance_,
                                                BS_AUTOCHECKBOX));
     y += row_h + Dp(10);
 
-    remember_label(CreateLabel(hwnd_, L"Audio Folder:", Dp(10), y + Dp(3), label_w,
+    remember_label(CreateLabel(hwnd_, L"音频目录：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
     debug_dir_edit_ = remember(CreateEdit(hwnd_, ctrl_x, y, ctrl_w - Dp(80),
                                           Dp(24), kIdDebugDirEdit, instance_, ES_READONLY));
-    remember(CreateButton(hwnd_, L"Browse...", ctrl_x + ctrl_w - Dp(75), y,
+    remember(CreateButton(hwnd_, L"浏览…", ctrl_x + ctrl_w - Dp(75), y,
                           Dp(75), Dp(24), kIdChooseDir, instance_));
     y += row_h + Dp(20);
 
     const int btn_w = Dp(80);
     const int btn_h = Dp(30);
-    remember(CreateButton(hwnd_, L"Save", Dp(kClientWidth - 200), y, btn_w, btn_h,
+    remember(CreateButton(hwnd_, L"保存", Dp(kClientWidth - 200), y, btn_w, btn_h,
                           kIdSave, instance_));
-    remember(CreateButton(hwnd_, L"Cancel", Dp(kClientWidth - 105), y, btn_w, btn_h,
+    remember(CreateButton(hwnd_, L"取消", Dp(kClientWidth - 105), y, btn_w, btn_h,
                           kIdCancel, instance_));
 
     for (HWND control : all_controls_) {
@@ -427,6 +434,7 @@ void SettingsDialog::LoadConfigIntoControls() {
     SetWindowTextW(llm_model_edit_, Utf16(config_.llm_model).c_str());
 
     SendMessageW(debug_audio_check_, BM_SETCHECK, config_.debug_audio_cache ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(side_button_send_check_, BM_SETCHECK, config_.side_button_send ? BST_CHECKED : BST_UNCHECKED, 0);
     SetWindowTextW(debug_dir_edit_, config_.debug_audio_directory.c_str());
 
     UpdateProviderVisibility();
@@ -458,6 +466,7 @@ void SettingsDialog::SaveSettings() {
     }
 
     config_.debug_audio_cache = SendMessageW(debug_audio_check_, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    config_.side_button_send = SendMessageW(side_button_send_check_, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
     auto dir = GetWindowText(debug_dir_edit_);
     if (!dir.empty()) config_.debug_audio_directory = dir;
@@ -490,7 +499,7 @@ void SettingsDialog::ApplyTrialApiKey() {
     if (idx != 0) return;
 
     EnableWindow(apply_trial_button_, FALSE);
-    SetWindowTextW(apply_trial_button_, L"Applying...");
+    SetWindowTextW(apply_trial_button_, L"正在申请…");
     UpdateWindow(apply_trial_button_);
 
     const std::string device_id = config_.paired_device_ids.empty()
@@ -498,7 +507,7 @@ void SettingsDialog::ApplyTrialApiKey() {
                                       : config_.paired_device_ids.front();
     auto result = ApplyVoiceStickCloudTrialApiKey(config_.voicestick_cloud_url, device_id);
 
-    SetWindowTextW(apply_trial_button_, L"Apply Trial");
+    SetWindowTextW(apply_trial_button_, L"申请试用");
     EnableWindow(apply_trial_button_, TRUE);
 
     if (!result.api_key.empty()) {
@@ -512,17 +521,17 @@ void SettingsDialog::ApplyTrialApiKey() {
         auto* shell_result = ShellExecuteW(hwnd_, L"open", wide_url.c_str(),
                                            nullptr, nullptr, SW_SHOWNORMAL);
         if (reinterpret_cast<INT_PTR>(shell_result) <= 32) {
-            MessageBoxW(hwnd_, L"Could not open the VoiceStick Cloud signup page.",
-                        L"Could Not Apply Trial API Key", MB_ICONERROR | MB_OK);
+            MessageBoxW(hwnd_, L"无法打开 VoiceStick 云服务申请页面。",
+                        L"试用密钥申请失败", MB_ICONERROR | MB_OK);
         }
         UpdateProviderVisibility();
         return;
     }
 
     MessageBoxW(hwnd_, Utf16(result.error.empty()
-                             ? "Could not apply a trial API Key."
+                             ? "无法申请试用 API 密钥。"
                              : result.error).c_str(),
-                L"Could Not Apply Trial API Key", MB_ICONERROR | MB_OK);
+                L"试用密钥申请失败", MB_ICONERROR | MB_OK);
     UpdateProviderVisibility();
 }
 

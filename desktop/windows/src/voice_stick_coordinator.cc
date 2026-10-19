@@ -98,6 +98,7 @@ void VoiceStickCoordinator::Start() {
 void VoiceStickCoordinator::Shutdown() {
     if (is_shutdown_) return;
     is_shutdown_ = true;
+    pending_send_device_id_.reset();
     ble_->on_connection_change = nullptr;
     ble_->on_connection_error = nullptr;
     ble_->on_scan_error = nullptr;
@@ -121,6 +122,8 @@ void VoiceStickCoordinator::Shutdown() {
 }
 
 void VoiceStickCoordinator::UpdateConfig(AppConfig config) {
+    if (pending_send_device_id_) ui_->SetStatus("Ready");
+    pending_send_device_id_.reset();
     const bool was_recognizing = asr_started_ || active_session_id_.has_value() ||
                                  !pending_paste_state_.IsIdle() || !subtitle_cycles_.empty();
     if (was_recognizing) {
@@ -187,6 +190,7 @@ void VoiceStickCoordinator::ConfirmPairedDeviceIds(const std::vector<std::string
 }
 
 void VoiceStickCoordinator::RemovePairedDevice(const std::string& device_id) {
+    if (pending_send_device_id_ == device_id) pending_send_device_id_.reset();
     auto it = std::find(paired_device_ids_.begin(), paired_device_ids_.end(), device_id);
     if (it == paired_device_ids_.end()) return;
     paired_device_ids_.erase(it);
@@ -367,6 +371,22 @@ void VoiceStickCoordinator::HandleButtonClick(const StateEvent& event, const std
 }
 
 void VoiceStickCoordinator::HandleSecondaryButtonClick(const std::string& device_id) {
+    if (config_.side_button_send &&
+        config_.default_output_profile.target == OutputTarget::kFocusedApp) {
+        // Only the device whose text was pasted can confirm, and only once.
+        // Presses while recording, recognizing, or waiting to paste do nothing.
+        if (pending_send_device_id_ == device_id &&
+            session_state_ == SessionState::kReady && pending_paste_state_.IsIdle()) {
+            if (input_injector_->SendEnter()) {
+                pending_send_device_id_.reset();
+                ui_->HideOverlay();
+                ui_->SetStatus("Ready");
+            } else {
+                ui_->SetStatus("Return to original input to send");
+            }
+        }
+        return;
+    }
     if (HasActiveSubtitleSession(device_id)) {
         CancelSubtitleCycle(device_id, "secondary_cancel");
         return;
@@ -395,6 +415,8 @@ void VoiceStickCoordinator::HandlePrimaryButtonDown(std::optional<std::uint32_t>
         return;
     }
 
+    pending_send_device_id_.reset();
+    ui_->SetStatus("Listening");
     {
         std::lock_guard lock(audio_mutex_);
         active_session_id_ = session_id;
@@ -757,7 +779,7 @@ void VoiceStickCoordinator::CancelShortRecording() {
 }
 
 void VoiceStickCoordinator::FinishWithFinalText(const std::string& text) {
-    if (pasted_final_text_) return;
+    if (!active_device_id_ || pasted_final_text_) return;
     pasted_final_text_ = true;
     const auto profile = OutputProfileForDevice(active_device_id_);
     if (profile.target == OutputTarget::kSubtitle) {
@@ -1029,15 +1051,23 @@ void VoiceStickCoordinator::RecoverFromAsrError(bool hide_overlay) {
 }
 
 void VoiceStickCoordinator::CommitPendingPaste(const std::string& text) {
-    if (pending_paste_state_.text == text) CompletePendingPaste(text);
+    if (!pending_paste_state_.IsIdle() && pending_paste_state_.text == text) CompletePendingPaste(text);
 }
 
 void VoiceStickCoordinator::CompletePendingPaste(const std::string& text) {
-    const bool should_press_enter = config_.auto_enter;
+    const bool should_press_enter = config_.auto_enter && !config_.side_button_send;
+    const auto device_id = active_device_id_;
     pending_paste_state_ = {};
     FinishRecognitionCycle();
     EnterReady("paste_complete", false);
-    input_injector_->Paste(text, should_press_enter);
+    if (!input_injector_->Paste(text, should_press_enter)) {
+        EnterError("Could not paste text. Focus the input and restore the last input to retry.", "paste_failed");
+        return;
+    }
+    if (config_.side_button_send) {
+        pending_send_device_id_ = device_id;
+        ui_->SetStatus("Side button: Send");
+    }
 }
 
 bool VoiceStickCoordinator::RestoreLastInputConfirmation(std::optional<std::string> device_id) {
@@ -1046,6 +1076,7 @@ bool VoiceStickCoordinator::RestoreLastInputConfirmation(std::optional<std::stri
         return false;
     }
     active_device_id_ = std::move(device_id);
+    pending_send_device_id_.reset();
     EnterPausedConfirmation(*last_recoverable_text_, "restore_last_input");
     return true;
 }
@@ -1095,6 +1126,9 @@ void VoiceStickCoordinator::CancelRecognitionInProgress() {
 
 void VoiceStickCoordinator::CancelActiveCycleIfDeviceDisconnected() {
     if (is_shutdown_) return;
+    if (pending_send_device_id_ && !ble_->IsConnected(*pending_send_device_id_)) {
+        pending_send_device_id_.reset();
+    }
     for (auto it = subtitle_cycles_.begin(); it != subtitle_cycles_.end();) {
         const auto& device_id = it->first.first;
         if (!ble_->IsConnected(device_id)) {
@@ -1317,6 +1351,10 @@ void VoiceStickCoordinator::EnterFinalizing(std::string_view reason) {
 
 void VoiceStickCoordinator::EnterPendingConfirmation(const std::string& text, std::string_view reason) {
     pending_paste_state_ = {PendingPasteKind::kWaitingToPaste, text};
+    if (config_.side_button_send) {
+        CompletePendingPaste(text);
+        return;
+    }
     SetSessionState(SessionState::kPendingConfirmation, reason);
     ui_->ShowFinalCountdown(text, active_device_id_, [this, text] { CommitPendingPaste(text); });
     SendUiStateForActiveDevice("pending_confirmation", text);
