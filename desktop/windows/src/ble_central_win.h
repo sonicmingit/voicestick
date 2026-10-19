@@ -34,6 +34,7 @@ public:
     void SendUiState(const std::string& state,
                        const std::string& text,
                        const std::optional<std::string>& device_id) override;
+    void SendButtonControl(const std::string& json, const std::string& device_id) override;
     void SendInteractionMode(InteractionMode mode,
                              const std::optional<std::string>& device_id) override;
     void UpdateFirmware(ByteVector image,
@@ -66,6 +67,9 @@ private:
         bool state_subscribed = false;
         bool ota_state_subscribed = false;
         bool ready = false;
+        std::mutex control_mutex;
+        std::queue<ByteVector> control_queue;
+        bool control_writing = false;
     };
 
     struct FirmwareUpdateSession {

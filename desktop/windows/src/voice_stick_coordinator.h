@@ -54,6 +54,7 @@ public:
                                const std::optional<std::string>& device_id) = 0;
     virtual void SendInteractionMode(InteractionMode mode,
                                      const std::optional<std::string>& device_id) = 0;
+    virtual void SendButtonControl(const std::string& json, const std::string& device_id) {}
     virtual void UpdateFirmware(ByteVector image,
                                 const std::string& device_id,
                                 std::function<void(FirmwareUpdateProgress)> progress,
@@ -123,6 +124,7 @@ public:
     virtual ~InputInjector() = default;
     virtual bool Paste(const std::string& text, bool press_enter) = 0;
     virtual bool SendEnter() = 0;
+    virtual bool SendShortcut(const Shortcut& shortcut) { return false; }
 };
 
 class VoiceStickCoordinator {
@@ -197,6 +199,9 @@ private:
     void ConfigureAsrCallbacks();
     void ConfigureSubtitleAsrCallbacks(SubtitleCycle* cycle);
     void HandleStateEvent(const StateEvent& event, const std::string& device_id);
+    void SyncButtons(const std::string& device_id);
+    void HandleGesture(const StateEvent& event, const std::string& device_id);
+    bool UsesCustomButtons(const std::optional<std::string>& device_id) const;
     void HandleButtonDown(const StateEvent& event, const std::string& device_id);
     void HandleButtonUp(const StateEvent& event, const std::string& device_id);
     void HandleButtonClick(const StateEvent& event, const std::string& device_id);
@@ -276,6 +281,10 @@ private:
     bool ShouldUseDefiniteSegments(const OutputProfile& profile) const;
     double CurrentRecordingDurationSeconds() const;
 
+    std::set<std::string> gesture_capable_devices_;
+    std::map<std::string, std::uint32_t> button_revisions_;
+    std::map<std::string, std::uint32_t> acknowledged_button_revisions_;
+    std::uint32_t next_button_revision_ = 1;
     AppConfig config_;
     std::unique_ptr<BleCentral> ble_;
     std::unique_ptr<AsrClient> asr_;

@@ -4,7 +4,9 @@ param(
     [string]$OutputDirectory,
     [string]$ToolchainEnvironment,
     [string]$WinSparkleSource,
-    [string]$WixPath = 'wix'
+    [string]$WixPath = 'wix',
+    [ValidatePattern('^[a-zA-Z0-9_-]+$')]
+    [string]$PackageSuffix = 'zh-CN_custom-buttons_x64'
 )
 $ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path -Parent $PSScriptRoot
@@ -40,7 +42,7 @@ $licenseText = foreach ($file in $licenseFiles) {
     Get-Content -LiteralPath $file -Raw
 }
 $licenseText | Set-Content -LiteralPath $notices -Encoding utf8
-$installer = Join-Path $OutputDirectory "VoiceStick_${version}_zh-CN_side-send_x64.msi"
+$installer = Join-Path $OutputDirectory "VoiceStick_${version}_${PackageSuffix}.msi"
 Invoke-Checked $WixPath @('build', (Join-Path $projectDirectory 'desktop/windows/installer/VoiceStick.wxs'),
     (Join-Path $projectDirectory 'desktop/windows/installer/zh-CN.wxl'),
     '-arch', 'x64', '-culture', 'zh-CN', '-ext', 'WixToolset.UI.wixext', '-ext', 'WixToolset.Util.wixext',
@@ -53,7 +55,8 @@ New-Item -ItemType Directory -Force -Path $portable | Out-Null
 Copy-Item -LiteralPath (Join-Path $BuildDirectory 'VoiceStick.exe'),
     (Join-Path $BuildDirectory 'WinSparkle.dll'), (Join-Path $projectDirectory 'LICENSE'), $notices -Destination $portable
 Copy-Item -LiteralPath (Join-Path $projectDirectory 'docs/Windows中文定制版说明.md') -Destination (Join-Path $portable '使用说明.md')
-$archive = Join-Path $OutputDirectory "VoiceStick_${version}_zh-CN_side-send_x64.zip"
+Copy-Item -LiteralPath (Join-Path $projectDirectory 'docs/自定义按键使用说明.md') -Destination $portable
+$archive = Join-Path $OutputDirectory "VoiceStick_${version}_${PackageSuffix}.zip"
 Compress-Archive -LiteralPath $portable -DestinationPath $archive -Force
 $hashes = Get-FileHash -Algorithm SHA256 -LiteralPath $installer, $archive
 $hashes | ForEach-Object { "$($_.Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($_.Path))" } |

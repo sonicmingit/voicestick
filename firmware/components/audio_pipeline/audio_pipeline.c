@@ -43,6 +43,8 @@ typedef struct {
 } audio_packet_t;
 
 static atomic_bool s_running;
+static atomic_bool s_committed;
+static atomic_bool s_discard;
 static bool s_initialized;
 static uint32_t s_session_id;
 static uint32_t s_seq;
@@ -300,7 +302,9 @@ static void tx_task(void *arg)
     uint32_t sent = 0;
     uint32_t tx_dropped = 0;
 
+    while (!atomic_load(&s_committed) && !atomic_load(&s_discard)) vTaskDelay(pdMS_TO_TICKS(5));
     while (true) {
+        if (atomic_load(&s_discard)) goto cleanup;
         if (xQueueReceive(s_tx_queue, &pkt, portMAX_DELAY) != pdTRUE) {
             continue;
         }
@@ -312,6 +316,7 @@ static void tx_task(void *arg)
 
         int retries = 0;
         while (true) {
+            if (atomic_load(&s_discard)) goto cleanup;
             esp_err_t err = voice_ble_send_audio(pkt.session_id, pkt.seq,
                                                  pkt.flags, pkt.data, pkt.len);
             if (err == ESP_OK) {
@@ -365,11 +370,13 @@ drain:
             }
         }
 
+        if (atomic_load(&s_discard)) goto cleanup;
         /* Send the END marker over BLE */
         voice_ble_send_audio(s_session_id, s_seq, VOICE_BLE_FLAG_END, NULL, 0);
 
         ESP_LOGI(TAG, "tx task exit: sent=%" PRIu32 " dropped=%" PRIu32, sent, tx_dropped);
 
+cleanup:
         /* Wait for audio_task to finish before destroying shared resources */
         while (s_audio_task != NULL) {
             vTaskDelay(pdMS_TO_TICKS(10));
@@ -394,7 +401,7 @@ esp_err_t audio_pipeline_init(void)
     return ESP_OK;
 }
 
-esp_err_t audio_pipeline_start(uint32_t session_id)
+static esp_err_t start_pipeline(uint32_t session_id, bool committed)
 {
     ESP_RETURN_ON_FALSE(s_initialized, ESP_ERR_INVALID_STATE, TAG, "not initialized");
     if (atomic_load(&s_running)) {
@@ -424,6 +431,8 @@ esp_err_t audio_pipeline_start(uint32_t session_id)
     s_session_id = session_id;
     s_seq = 0;
     opus_encoder_ctl(s_opus_encoder, OPUS_RESET_STATE);
+    atomic_store(&s_discard, false);
+    atomic_store(&s_committed, committed);
     atomic_store(&s_running, true);
 
     BaseType_t ok = xTaskCreatePinnedToCore(tx_task, "audio_tx", 4096,
@@ -440,6 +449,7 @@ esp_err_t audio_pipeline_start(uint32_t session_id)
     if (ok != pdPASS) {
         atomic_store(&s_running, false);
         s_audio_task = NULL;
+        atomic_store(&s_discard, true);
         audio_packet_t sentinel = {
             .session_id = s_session_id,
             .seq = s_seq,
@@ -453,6 +463,14 @@ esp_err_t audio_pipeline_start(uint32_t session_id)
     }
     ESP_LOGI(TAG, "start session %" PRIu32, session_id);
     return ESP_OK;
+}
+
+esp_err_t audio_pipeline_start(uint32_t session_id) { return start_pipeline(session_id, true); }
+esp_err_t audio_pipeline_prepare(uint32_t session_id) { return start_pipeline(session_id, false); }
+void audio_pipeline_commit(void) { atomic_store(&s_committed, true); }
+esp_err_t audio_pipeline_discard(void) {
+    atomic_store(&s_discard, true);
+    return audio_pipeline_stop();
 }
 
 esp_err_t audio_pipeline_stop(void)

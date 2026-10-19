@@ -1,4 +1,5 @@
 #include "settings_dialog.h"
+#include "button_settings_dialog.h"
 #include "dpi_util.h"
 #include "voice_stick_cloud_api_win.h"
 
@@ -175,6 +176,9 @@ INT_PTR SettingsDialog::HandleMessage(UINT message, WPARAM w_param, LPARAM l_par
     switch (message) {
     case WM_COMMAND:
         switch (LOWORD(w_param)) {
+        case 2015:
+            ShowButtonSettings(hwnd_, instance_, config_);
+            return TRUE;
         case kIdSave:
             SaveSettings();
             return TRUE;
@@ -380,7 +384,7 @@ void SettingsDialog::BuildControls() {
                                           kIdLlmModelEdit, instance_));
     y += row_h + Dp(16);
 
-    remember_label(CreateLabel(hwnd_, L"发送方式：", Dp(10), y + Dp(3), label_w,
+    remember_label(CreateLabel(hwnd_, L"旧固件发送：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
     side_button_send_check_ = remember(CreateButton(hwnd_, L"文字填入后，按侧键回车发送", ctrl_x, y,
                                                      ctrl_w, Dp(22), kIdSideButtonSend, instance_,
@@ -404,6 +408,8 @@ void SettingsDialog::BuildControls() {
 
     const int btn_w = Dp(80);
     const int btn_h = Dp(30);
+    remember(CreateButton(hwnd_, L"按键与快捷键…", Dp(20), y, Dp(160), btn_h,
+                          2015, instance_));
     remember(CreateButton(hwnd_, L"保存", Dp(kClientWidth - 200), y, btn_w, btn_h,
                           kIdSave, instance_));
     remember(CreateButton(hwnd_, L"取消", Dp(kClientWidth - 105), y, btn_w, btn_h,

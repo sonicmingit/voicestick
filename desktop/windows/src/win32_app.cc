@@ -968,7 +968,7 @@ void Win32App::ShowPairDeviceDialog() {
 }
 
 void Win32App::ShowSettings() {
-    if (!settings_dialog_) {
+    {
         settings_dialog_ = std::make_unique<SettingsDialog>(instance_, hwnd_, config_);
         settings_dialog_->on_config_changed = [this](AppConfig new_config) {
             config_ = std::move(new_config);

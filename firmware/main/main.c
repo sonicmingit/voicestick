@@ -19,6 +19,7 @@
 #include "iot_button.h"
 
 #include "audio_pipeline.h"
+#include "button_gestures.h"
 #include "stick_s3_board.h"
 #include "ui_status.h"
 #include "voice_ble.h"
@@ -53,6 +54,7 @@ static button_handle_t s_side_button;
 static int64_t s_primary_down_us;
 static int64_t s_secondary_down_us;
 static uint32_t s_primary_session_id;
+static bool s_custom_buttons;
 
 typedef enum {
     APP_UI_STATE_READY,
@@ -89,6 +91,8 @@ static const char *app_ui_state_name(app_ui_state_t state)
 }
 
 typedef enum {
+    APP_EVENT_BUTTON_PROFILE,
+    APP_EVENT_RECORD_CANCEL,
     APP_EVENT_FRONT_DOWN,
     APP_EVENT_FRONT_UP,
     APP_EVENT_SIDE_DOWN,
@@ -110,8 +114,9 @@ typedef struct {
     app_event_type_t type;
     uint32_t written;
     uint32_t size;
+    uint64_t timestamp_ms;
     char state[32];
-    char text[96];
+    char text[192];
 } app_event_t;
 
 static void update_battery_status(void);
@@ -339,7 +344,7 @@ static bool app_ui_allows_recording_start(void)
     return s_app_ui_state != APP_UI_STATE_PENDING_CONFIRMATION;
 }
 
-static uint32_t start_recording(void)
+static uint32_t begin_recording(bool prepare)
 {
     const bool ble_ready = voice_ble_is_ready();
     const bool ota_active = voice_ble_ota_is_active();
@@ -359,7 +364,7 @@ static uint32_t start_recording(void)
         return 0;
     }
 
-    err = audio_pipeline_start(session_id);
+    err = prepare ? audio_pipeline_prepare(session_id) : audio_pipeline_start(session_id);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "audio start failed: %s", esp_err_to_name(err));
         release_recording_pm_locks();
@@ -368,12 +373,14 @@ static uint32_t start_recording(void)
     }
 
     s_recording = true;
-    s_app_ui_state = APP_UI_STATE_RECORDING;
+    if (!prepare) s_app_ui_state = APP_UI_STATE_RECORDING;
     restart_display_dim_timer();
     restart_deep_sleep_timer();
-    ui_status_set_recording(session_id);
+    if (!prepare) ui_status_set_recording(session_id);
     return session_id;
 }
+
+static uint32_t start_recording(void) { return begin_recording(false); }
 
 static uint32_t stop_recording(void)
 {
@@ -400,6 +407,7 @@ static void queue_app_event_with_ota(app_event_type_t type, uint32_t written, ui
     if (s_app_event_queue) {
         app_event_t event = {
             .type = type,
+            .timestamp_ms = (uint64_t)esp_timer_get_time() / 1000,
             .written = written,
             .size = size,
         };
@@ -493,7 +501,15 @@ static void ble_control_cb(const char *json)
     const cJSON *state = cJSON_GetObjectItemCaseSensitive(root, "state");
     const cJSON *text = cJSON_GetObjectItemCaseSensitive(root, "text");
     const cJSON *mode = cJSON_GetObjectItemCaseSensitive(root, "mode");
-    if (cJSON_IsString(event) && strcmp(event->valuestring, "ui_state") == 0 &&
+    if (cJSON_IsString(event) && (strcmp(event->valuestring, "buttons") == 0 || strcmp(event->valuestring, "buttons_off") == 0)) {
+        app_event_t profile = {.type = APP_EVENT_BUTTON_PROFILE};
+        if (strlen(json) < sizeof(profile.text)) {
+            strcpy(profile.text, json);
+            (void)xQueueSend(s_app_event_queue, &profile, 0);
+        }
+    } else if (cJSON_IsString(event) && strcmp(event->valuestring, "record_cancel") == 0) {
+        queue_app_event(APP_EVENT_RECORD_CANCEL);
+    } else if (cJSON_IsString(event) && strcmp(event->valuestring, "ui_state") == 0 &&
         cJSON_IsString(state)) {
         queue_ui_state_event(state->valuestring, cJSON_IsString(text) ? text->valuestring : "");
     } else if (cJSON_IsString(event) && strcmp(event->valuestring, "interaction_mode") == 0 &&
@@ -563,7 +579,7 @@ static void apply_app_ui_state(const char *state, const char *text)
 static void apply_interaction_mode(interaction_mode_t mode)
 {
     s_interaction_mode = mode;
-    ui_status_set_idle_hint(mode == INTERACTION_MODE_CLICK_TO_TALK ? "Click to Talk" : "Hold to Talk");
+    ui_status_set_idle_hint(s_custom_buttons ? "Custom buttons" : mode == INTERACTION_MODE_CLICK_TO_TALK ? "Click to Talk" : "Hold to Talk");
     if (s_app_ui_state == APP_UI_STATE_READY && !s_recording) {
         ui_status_set_idle();
     }
@@ -590,16 +606,159 @@ static void ble_ota_cb(voice_ble_ota_event_t event, uint32_t written, uint32_t s
     }
 }
 
+static uint32_t s_button_revision;
+static int s_long_ms = 500, s_double_ms = 300;
+static char s_button_actions[7] = "301333";
+static bg_state_t s_gestures[2];
+static int s_recording_slot = -1;
+static bool s_preparing;
+
+static void cancel_button_recording(void)
+{
+    if (s_recording) {
+        audio_pipeline_discard();
+        s_recording = false;
+        release_recording_pm_locks();
+    }
+    s_recording_slot = -1;
+    s_preparing = false;
+    memset(s_gestures, 0, sizeof(s_gestures));
+    apply_app_ui_state("ready", "");
+}
+
+static void emit_gesture(int button, bg_event_t gesture, uint32_t duration, void *context)
+{
+    (void)context;
+    int slot = button * 3 + (gesture == BG_SINGLE ? 0 : gesture == BG_DOUBLE ? 1 : 2);
+    char action = s_button_actions[slot];
+    if (s_preparing && s_recording_slot / 3 == button && gesture != BG_LONG_START && gesture != BG_LONG_END) {
+        audio_pipeline_discard();
+        s_recording = s_preparing = false;
+        s_recording_slot = -1;
+        release_recording_pm_locks();
+        restart_display_dim_timer(); restart_deep_sleep_timer();
+        voice_ble_request_slow_interval();
+    }
+    if (gesture == BG_LONG_END) {
+        if (action == '1' && s_recording_slot == slot && s_recording && !s_preparing) {
+            uint32_t session = audio_pipeline_session_id();
+            // State goes first so the desktop is already waiting when END arrives.
+            (void)voice_ble_send_gesture("record_stop", slot, session, duration, s_button_revision);
+            stop_recording(); s_recording_slot = -1;
+            apply_app_ui_state("thinking", "");
+        }
+        return;
+    }
+    if (action == '1' || action == '2') {
+        if (action == '2' && s_recording && !s_preparing) {
+            uint32_t session = audio_pipeline_session_id();
+            // Report the slot that started this session, irrespective of stop binding.
+            (void)voice_ble_send_gesture("record_stop", s_recording_slot, session, duration, s_button_revision);
+            stop_recording(); s_recording_slot = -1;
+            apply_app_ui_state("thinking", "");
+            return;
+        }
+        if (s_preparing && s_recording_slot == slot) {
+            if (voice_ble_send_gesture("record_start", slot, audio_pipeline_session_id(), duration, s_button_revision) != ESP_OK) {
+                cancel_button_recording(); return;
+            }
+            s_preparing = false;
+            s_app_ui_state = APP_UI_STATE_RECORDING;
+            ui_status_set_recording(audio_pipeline_session_id());
+            audio_pipeline_commit();
+        } else if (!s_recording && s_app_ui_state == APP_UI_STATE_READY) {
+            uint32_t session = begin_recording(true);
+            if (session) {
+                s_recording_slot = slot;
+                if (voice_ble_send_gesture("record_start", slot, session, 0, s_button_revision) != ESP_OK) {
+                    cancel_button_recording(); return;
+                }
+                s_app_ui_state = APP_UI_STATE_RECORDING;
+                ui_status_set_recording(session);
+                audio_pipeline_commit();
+            }
+        }
+    } else if (action == '3') {
+        (void)voice_ble_send_gesture("button_gesture", slot, 0, duration, s_button_revision);
+    }
+}
+
+static void handle_custom_edge(int button, bool down, uint64_t now)
+{
+    bg_edge(&s_gestures[button], button, down, now, s_long_ms, s_double_ms,
+            true, s_button_actions[button * 3 + 1] != '0', emit_gesture, NULL);
+    if (down && !s_recording && s_app_ui_state == APP_UI_STATE_READY && s_button_actions[button * 3 + 2] == '1') {
+        uint32_t session = begin_recording(true);
+        if (session) { s_preparing = true; s_recording_slot = button * 3 + 2; }
+    }
+    if (!down && s_preparing && s_recording_slot / 3 == button) {
+        // A short click never transmits the speculative audio or opens ASR.
+        audio_pipeline_discard(); s_recording = s_preparing = false;
+        s_recording_slot = -1; release_recording_pm_locks();
+        restart_display_dim_timer(); restart_deep_sleep_timer();
+        voice_ble_request_slow_interval();
+    }
+}
+
+static void apply_button_profile(const char *json)
+{
+    cJSON *root = cJSON_Parse(json);
+    if (!root) return;
+    const cJSON *event = cJSON_GetObjectItemCaseSensitive(root, "event");
+    if (cJSON_IsString(event) && strcmp(event->valuestring, "buttons_off") == 0) {
+        cancel_button_recording(); s_custom_buttons = false;
+        apply_interaction_mode(s_interaction_mode);
+    } else {
+        const cJSON *map = cJSON_GetObjectItemCaseSensitive(root, "map");
+        const cJSON *long_ms = cJSON_GetObjectItemCaseSensitive(root, "long_ms");
+        const cJSON *double_ms = cJSON_GetObjectItemCaseSensitive(root, "double_ms");
+        const cJSON *rev = cJSON_GetObjectItemCaseSensitive(root, "rev");
+        bool valid = cJSON_IsString(map) && strlen(map->valuestring) == 6 &&
+                     cJSON_IsNumber(long_ms) && long_ms->valueint >= 500 && long_ms->valueint <= 1500 &&
+                     cJSON_IsNumber(double_ms) && double_ms->valueint >= 150 && double_ms->valueint <= 500 &&
+                     cJSON_IsNumber(rev) && rev->valuedouble > 0 && rev->valuedouble <= UINT32_MAX;
+        if (valid) for (int i = 0; i < 6; ++i) if (map->valuestring[i] < '0' || map->valuestring[i] > '3' || (map->valuestring[i] == '1' && i % 3 != 2)) valid = false;
+        if (valid) {
+            cancel_button_recording();
+            memcpy(s_button_actions, map->valuestring, 7);
+            s_long_ms = long_ms->valueint; s_double_ms = double_ms->valueint;
+            s_button_revision = (uint32_t)rev->valuedouble;
+            s_custom_buttons = true;
+            ui_status_set_idle_hint("Custom buttons");
+            (void)voice_ble_send_buttons_ready(s_button_revision);
+        }
+    }
+    cJSON_Delete(root);
+}
+
 static void app_event_task(void *arg)
 {
     (void)arg;
     app_event_t event;
     while (true) {
-        if (xQueueReceive(s_app_event_queue, &event, portMAX_DELAY) != pdTRUE) {
+        const TickType_t wait_ticks = s_custom_buttons &&
+            (s_gestures[0].down || s_gestures[1].down || s_gestures[0].pending || s_gestures[1].pending)
+            ? pdMS_TO_TICKS(10) : portMAX_DELAY;
+        if (xQueueReceive(s_app_event_queue, &event, wait_ticks) != pdTRUE) {
+            if (s_custom_buttons && !s_ota_updating) for (int i = 0; i < 2; ++i)
+                bg_tick(&s_gestures[i], i, (uint64_t)esp_timer_get_time() / 1000, s_long_ms, s_double_ms,
+                        true, emit_gesture, NULL);
+            continue;
+        }
+        if (s_custom_buttons && event.type >= APP_EVENT_FRONT_DOWN && event.type <= APP_EVENT_SIDE_UP) {
+            note_activity();
+            if (!s_ota_updating) handle_custom_edge(event.type >= APP_EVENT_SIDE_DOWN ? 1 : 0,
+                 event.type == APP_EVENT_FRONT_DOWN || event.type == APP_EVENT_SIDE_DOWN, event.timestamp_ms);
             continue;
         }
 
         switch (event.type) {
+        case APP_EVENT_BUTTON_PROFILE:
+            if (!s_ota_updating) apply_button_profile(event.text);
+            break;
+        case APP_EVENT_RECORD_CANCEL:
+            cancel_button_recording();
+            break;
         case APP_EVENT_FRONT_DOWN:
             ESP_LOGI(TAG, "button front down");
             note_activity();
@@ -677,6 +836,8 @@ static void app_event_task(void *arg)
             note_activity();
             break;
         case APP_EVENT_BLE_DISCONNECTED:
+            s_custom_buttons = false;
+            cancel_button_recording();
             s_recording = false;
             s_ota_updating = false;
             s_app_ui_state = APP_UI_STATE_READY;
@@ -696,6 +857,7 @@ static void app_event_task(void *arg)
             enter_deep_sleep();
             break;
         case APP_EVENT_OTA_BEGIN:
+            if (s_custom_buttons) cancel_button_recording();
             s_ota_updating = true;
             if (s_recording) {
                 const uint32_t session_id = stop_recording();

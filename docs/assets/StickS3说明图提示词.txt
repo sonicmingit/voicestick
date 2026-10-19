@@ -1,0 +1,56 @@
+Use case: infographic-diagram / scientific-educational.
+Create ONE precise, polished Simplified Chinese technical reference poster about the M5Stack StickS3 (SKU K150), intended for a hardware beginner who uses the VoiceStick Windows 0.3.6 project. Tall portrait 2:3 or slightly taller, high resolution, crisp readable Chinese text, warm white background, charcoal typography, restrained M5 cyan + teal and orange accents, generous whitespace, premium printed quick-reference manual. Not an advertisement. The product is the real black/dark-gray plastic StickS3, not an orange StickC and not the silver fictional render. Use product-faithful clean photographic/3D technical views.
+
+REFERENCE IMAGES, all only geometry / placement references, NOT images to copy entire existing posters:
+1 annotated official overview: ground truth for KEY1 G11, KEY2 G12, MIC, SPK, USB-C, HAT2, IR-TX and IR-RX.
+2 M5-logo side straight-on: central large rectangular button is KEY2; the narrow VERTICAL small slot toward the M5-logo/USB-C end (above the M5 mark in the photo) is the microphone aperture. Horizontal slots are case fixtures, do not label them MIC.
+3 STICK S3-logo side: the small button near the USB-C end is POWER / RESET, separate from KEY2 on the opposite side.
+4 USB-C end straight-on: USB-C and the white Grove connector below it.
+5 opposite end straight-on: three narrow vertical speaker grille holes above the 2x8 HAT2 sockets; IR-TX left and IR-RX right as shown.
+The front view in reference 1 shows one cyan elongated KEY1 below the tall display; preserve that shape and placement.
+
+COMPOSITION:
+Top title with exact text "M5Stack StickS3 硬件与按键说明"
+Subtitle "官方硬件功能 × VoiceStick Windows 0.3.6 默认用法"
+Small spec row: "ESP32-S3 · 8MB Flash + 8MB PSRAM" / "1.14英寸 135×240 LCD" / "250mAh · 48×24×15mm"
+Upper half: organized exterior map with a large front view and both explicitly named side views; below them two small clearly labeled end views. Numbered clean leaders with dot anchors, no crossing lines, landing precisely on the real feature. Leader labels:
+"① KEY1 主键 · GPIO11" at cyan front button
+"② KEY2 侧键 · GPIO12" at central M5-side button
+"③ 电源／复位键" at small STICK S3-side button
+"④ MIC 麦克风开孔" at the small vertical slot on M5 side near USB-C, with note "靠近 USB-C 端，勿遮挡"
+"⑤ USB-C" with short note "5V供电／充电／烧录"
+"⑥ Grove · HY2.0-4P" with short note "GND · 5V · G9 · G10"
+"⑦ HAT2 扩展接口" with short note "2×8针 · 2.54mm"
+"⑧ 扬声器出声孔" at exactly three grille holes, note "不是麦克风"
+"IR 发射 G46 / 接收 G42" at end IR windows. The microphone and speaker must not be confused.
+Side names must be "M5 标识侧" and "STICK S3 标识侧"; avoid ambiguous left/right after rotation.
+
+Lower half: three parallel well-spaced numbered button cards, include all following exact copy:
+Card 1 cyan header "① 主键 KEY1"
+"硬件：可编程按键"
+"按住说话：按住录音，松开结束"
+"点击说话：点一下开始，再点一下结束"
+"本项目：深度睡眠时可按主键唤醒"
+Card 2 teal header "② 侧键 KEY2"
+"硬件：可编程按键"
+"本项目：文字填入后，按侧键回车发送"
+"可先修改文字；每次填入只确认一次"
+"填入前按侧键不发送"
+Card 3 orange header "③ 电源／复位键"
+"官方操作：单击开机／复位"
+"双击关机"
+"连接 USB 后长按进入下载模式"
+"绿灯闪烁表示已进入下载模式"
+
+A slim explanatory note below the cards:
+"KEY1／KEY2 的应用功能由固件和客户端决定，不是硬件固定功能；本项目未单独绑定双击或长按动作。"
+A small footer with two concise columns:
+"内置能力：Wi-Fi／BLE、MEMS麦克风、ES8311、扬声器、BMI270六轴IMU、红外收发、背部磁吸"
+"本项目流程：主键录音 → 识别填入 → 可编辑 → 侧键发送"
+Small factual electrical note:
+"Grove／EXT_5V 有输入输出模式；输出模式下勿从该口反向供电。"
+Source footer exact:
+"依据：M5Stack 官方 StickS3 文档与外观图；VoiceStick 当前源码"
+"核对：2026-10-19 · 位置示意，非装配尺寸图"
+
+CONSTRAINTS: every Chinese sentence must be correct and readable, avoid excessive miniature text. Use the actual source geometry and slot positions; do not invent ports, LEDs, extra microphone holes, touchscreens, buttons, or case ventilation. KEY2 and power are on opposite side faces and have different functions; show them clearly as separate. POWER is not GPIO11/12. MIC is a SIDE opening near USB-C; it is NOT the speaker's three top holes or the Grove connector. No QR code, no fake official endorsement, no additional unsupported timing in seconds. No arbitrary color-coded wires around actual GPIO connectors. Keep all labels within margins. Prioritize clarity and factual accuracy over decorative details.

@@ -324,6 +324,19 @@ void BleCentralWin::SendInteractionMode(InteractionMode mode,
     }
 }
 
+void BleCentralWin::SendButtonControl(const std::string& json, const std::string& device_id) {
+    std::shared_ptr<DeviceSession> target;
+    {
+        std::lock_guard lock(mutex_);
+        auto it = sessions_by_device_id_.find(device_id);
+        if (it != sessions_by_device_id_.end() && it->second->ready) target = it->second;
+    }
+    if (target) {
+        ByteVector payload(json.begin(), json.end());
+        WriteControlPayloadAsync(std::move(target), payload);
+    }
+}
+
 bool BleCentralWin::IsConnected(const std::string& device_id) const {
     std::lock_guard lock(mutex_);
     auto it = sessions_by_device_id_.find(device_id);
@@ -1117,13 +1130,33 @@ winrt::fire_and_forget BleCentralWin::ConnectDeviceAsync(std::uint64_t bluetooth
 }
 
 winrt::fire_and_forget BleCentralWin::WriteControlPayloadAsync(std::shared_ptr<DeviceSession> session, ByteVector payload) {
-    try {
-        if (!session || !session->ready || !session->control_characteristic) co_return;
-        DataWriter writer;
-        writer.WriteBytes(payload);
-        co_await session->control_characteristic.WriteValueAsync(
-            writer.DetachBuffer(), GattWriteOption::WriteWithoutResponse);
-    } catch (...) {
+    if (!session || !session->ready || !session->control_characteristic) co_return;
+    {
+        std::lock_guard lock(session->control_mutex);
+        session->control_queue.push(std::move(payload));
+        if (session->control_writing) co_return;
+        session->control_writing = true;
+    }
+    while (true) {
+        ByteVector next;
+        {
+            std::lock_guard lock(session->control_mutex);
+            if (session->control_queue.empty() || !session->ready) {
+                session->control_queue = {};
+                session->control_writing = false;
+                co_return;
+            }
+            next = std::move(session->control_queue.front());
+            session->control_queue.pop();
+        }
+        try {
+            DataWriter writer;
+            writer.WriteBytes(next);
+            auto status = co_await session->control_characteristic.WriteValueAsync(
+                writer.DetachBuffer(), HasWrite(session->control_characteristic)
+                    ? GattWriteOption::WriteWithResponse : GattWriteOption::WriteWithoutResponse);
+            if (status != GattCommunicationStatus::Success) LogBleLine("Control write failed VS-" + session->device.id);
+        } catch (...) { LogBleLine("Control write failed VS-" + session->device.id); }
     }
 }
 

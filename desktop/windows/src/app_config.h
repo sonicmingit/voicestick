@@ -1,5 +1,7 @@
 #pragma once
 
+#include "button_bindings.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -89,6 +91,8 @@ struct AppConfig {
     std::map<std::string, OverlayPosition> device_overlay_positions;
     OutputProfile default_output_profile;
     std::map<std::string, OutputProfile> device_output_profiles;
+    ButtonBindings buttons;
+    std::map<std::string, ButtonBindings> button_presets;
     bool auto_enter = true;
     bool side_button_send = true;
     bool debug_audio_cache = false;
@@ -98,10 +102,10 @@ struct AppConfig {
     static std::filesystem::path ConfigPath();
     static std::filesystem::path DefaultDebugAudioDirectory();
     static AppConfig Defaults();
-    static AppConfig Load();
+    static AppConfig Load(const std::filesystem::path& path = ConfigPath());
     static const std::vector<std::string>& SupportedResourceIds();
 
-    void Save() const;
+    void Save(const std::filesystem::path& path = ConfigPath()) const;
     void SavePairedDevice(const PairedDeviceEntry& entry);
     void SavePairedDeviceInfo(const std::string& device_id,
                               const std::string& hardware,

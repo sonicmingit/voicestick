@@ -905,15 +905,28 @@ esp_err_t voice_ble_send_device_info(void)
 {
     const esp_app_desc_t *app_desc = esp_app_get_description();
     const char *version = app_desc ? app_desc->version : "unknown";
-    char json[280];
+    char json[320];
     snprintf(json, sizeof(json),
              "{\"event\":\"device_info\",\"hardware\":\"stick_s3\","
              "\"firmware_version\":\"%s\","
-             "\"buttons\":[\"primary\",\"secondary\"],"
-             "\"interaction_modes\":[\"hold_to_talk\",\"click_to_talk\"],"
-             "\"ui_states\":[\"ready\",\"recording\",\"thinking\","
-             "\"pending_confirmation\",\"error\"]}",
+             "\"button_gestures\":1,\"buttons\":[\"primary\",\"secondary\"],"
+             "\"interaction_modes\":[\"hold_to_talk\",\"click_to_talk\"]}",
              version);
+    return send_state_json(json);
+}
+
+esp_err_t voice_ble_send_buttons_ready(uint32_t revision)
+{
+    char json[80];
+    snprintf(json, sizeof(json), "{\"event\":\"buttons_ready\",\"rev\":%" PRIu32 "}", revision);
+    return send_state_json(json);
+}
+
+esp_err_t voice_ble_send_gesture(const char *event, int slot, uint32_t session, uint32_t duration, uint32_t revision)
+{
+    char json[192];
+    snprintf(json, sizeof(json), "{\"event\":\"%s\",\"button\":\"%s\",\"slot\":%d,\"session_id\":%" PRIu32 ",\"duration_ms\":%" PRIu32 ",\"rev\":%" PRIu32 "}",
+             event, slot < 3 ? "primary" : "secondary", slot, session, duration, revision);
     return send_state_json(json);
 }
 

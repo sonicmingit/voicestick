@@ -62,6 +62,16 @@ void VoiceStickCoordinator::Start() {
         if (is_shutdown_) return;
         ui_->SetConnectedDevices(devices);
         CancelActiveCycleIfDeviceDisconnected();
+        for (auto it = gesture_capable_devices_.begin(); it != gesture_capable_devices_.end();) {
+            if (!ble_->IsConnected(*it)) {
+                acknowledged_button_revisions_.erase(*it);
+                button_revisions_.erase(*it);
+                it = gesture_capable_devices_.erase(it);
+            } else {
+                if (!button_revisions_.contains(*it)) SyncButtons(*it);
+                ++it;
+            }
+        }
         RefreshFirmwareAvailability();
         ui_->SetStatus(paired_device_ids_.empty() ? "Pair a VoiceStick" : "Ready");
         ble_->SendInteractionMode(config_.interaction_mode, std::nullopt);
@@ -144,6 +154,7 @@ void VoiceStickCoordinator::UpdateConfig(AppConfig config) {
 
     config_ = std::move(config);
     translator_ = LLMTranslationClient(config_);
+    for (const auto& device : gesture_capable_devices_) SyncButtons(device);
     ble_->SendInteractionMode(config_.interaction_mode, std::nullopt);
     debug_audio_recorder_ = DebugAudioRecorder(config_.debug_audio_cache, config_.debug_audio_directory);
     if (asr_factory_) {
@@ -316,12 +327,104 @@ void VoiceStickCoordinator::HandleStateEvent(const StateEvent& event, const std:
     if (event.event == "device_info") {
         ui_->SetDeviceInfo(DeviceInfo{device_id, event.hardware, event.firmware_version});
         UpdateDeviceFirmwareInfo(event, device_id);
+        if (event.button_gestures == 1) {
+            gesture_capable_devices_.insert(device_id);
+            if (ble_->IsConnected(device_id)) SyncButtons(device_id);
+        } else if (config_.buttons.enabled) {
+            ui_->SetStatus("自定义按键需要升级设备固件；当前保留原有操作");
+        }
+    } else if (event.event == "buttons_ready") {
+        auto it = button_revisions_.find(device_id);
+        if (it != button_revisions_.end() && event.revision == it->second)
+            acknowledged_button_revisions_[device_id] = it->second;
+    } else if (event.event == "button_gesture" || event.event == "record_start" || event.event == "record_stop") {
+        HandleGesture(event, device_id);
     } else if (event.event == "button_down") {
+        if (UsesCustomButtons(device_id)) return;
         HandleButtonDown(event, device_id);
     } else if (event.event == "button_up") {
+        if (UsesCustomButtons(device_id)) return;
         HandleButtonUp(event, device_id);
     } else if (event.event == "button_click") {
+        if (UsesCustomButtons(device_id)) return;
         HandleButtonClick(event, device_id);
+    }
+}
+
+bool VoiceStickCoordinator::UsesCustomButtons(const std::optional<std::string>& device_id) const {
+    return config_.buttons.enabled && device_id && acknowledged_button_revisions_.contains(*device_id) &&
+           button_revisions_.contains(*device_id) && acknowledged_button_revisions_.at(*device_id) == button_revisions_.at(*device_id);
+}
+
+void VoiceStickCoordinator::SyncButtons(const std::string& device_id) {
+    acknowledged_button_revisions_.erase(device_id);
+    if (!config_.buttons.enabled || !config_.buttons.Validate().empty()) {
+        button_revisions_[device_id] = 0;
+        ble_->SendButtonControl("{\"event\":\"buttons_off\"}", device_id);
+        return;
+    }
+    const auto revision = next_button_revision_++;
+    button_revisions_[device_id] = revision;
+    ble_->SendButtonControl(config_.buttons.FirmwarePayload(revision), device_id);
+}
+
+void VoiceStickCoordinator::HandleGesture(const StateEvent& event, const std::string& device_id) {
+    if (!UsesCustomButtons(device_id) || event.revision != button_revisions_.at(device_id) ||
+        !event.slot || *event.slot >= 6 ||
+        event.button != (*event.slot < 3 ? "primary" : "secondary")) return;
+    const auto& action = config_.buttons.actions[*event.slot];
+    if (event.event == "record_start") {
+        if (action != "hold_record" && action != "toggle_record") return;
+        if ((active_device_id_ == device_id && active_session_id_ == event.session_id) ||
+            FindSubtitleCycle(device_id, event.session_id.value_or(0))) return;
+        HandlePrimaryButtonDown(event.session_id, device_id);
+        // Include audio captured while the device was deciding whether this was a hold.
+        auto preroll = std::chrono::milliseconds((std::min)(event.duration_ms.value_or(0), 1500u));
+        if (active_device_id_ == device_id && active_session_id_ == event.session_id)
+            active_session_started_at_ -= preroll;
+        if (auto* cycle = FindActiveSubtitleCycle(device_id); cycle && cycle->session_id == event.session_id)
+            cycle->started_at -= preroll;
+        if (!((active_device_id_ == device_id && active_session_id_ == event.session_id) ||
+              FindSubtitleCycle(device_id, event.session_id.value_or(0))))
+            ble_->SendButtonControl("{\"event\":\"record_cancel\"}", device_id);
+        return;
+    }
+    if (event.event == "record_stop") {
+        if ((action == "hold_record" || action == "toggle_record") &&
+            ((active_device_id_ == device_id && active_session_id_ == event.session_id) ||
+             FindSubtitleCycle(device_id, event.session_id.value_or(0)))) HandlePrimaryButtonUp(device_id);
+        return;
+    }
+    if (action == "cancel") {
+        if (pending_send_device_id_ == device_id) pending_send_device_id_.reset();
+        ble_->SendButtonControl("{\"event\":\"record_cancel\"}", device_id);
+        if (active_device_id_ == device_id) {
+            if (pending_paste_state_.IsIdle()) CancelRecognitionInProgress();
+            else { pending_paste_state_ = {}; FinishRecognitionCycle(); EnterReady("gesture_cancel"); }
+        }
+        CancelSubtitleCyclesForDevice(device_id, "gesture_cancel");
+        return;
+    }
+    if (action == "confirm_send" && active_device_id_ == device_id && !pending_paste_state_.IsIdle()) {
+        const auto text = pending_paste_state_.text;
+        CompletePendingPaste(text);
+        return;
+    }
+    if (session_state_ != SessionState::kReady || !pending_paste_state_.IsIdle() || !subtitle_cycles_.empty()) return;
+    if (action == "confirm_send") {
+        if (pending_send_device_id_ == device_id && input_injector_->SendEnter()) {
+            pending_send_device_id_.reset(); ui_->HideOverlay(); ui_->SetStatus("Ready");
+        }
+    } else if (action == "restore_last") {
+        if (last_recoverable_text_ && last_recoverable_device_id_ == device_id) {
+            active_device_id_ = device_id;
+            CompletePendingPaste(*last_recoverable_text_);
+        }
+    } else if (auto shortcut = ShortcutForAction(action)) {
+        if (input_injector_->SendShortcut(*shortcut)) {
+            // Editing can invalidate the text that was armed for confirmation.
+            if (action != "copy") pending_send_device_id_.reset();
+        } else ui_->SetStatus("快捷键未发送，请松开键盘修饰键并检查目标窗口权限");
     }
 }
 
@@ -1055,7 +1158,8 @@ void VoiceStickCoordinator::CommitPendingPaste(const std::string& text) {
 }
 
 void VoiceStickCoordinator::CompletePendingPaste(const std::string& text) {
-    const bool should_press_enter = config_.auto_enter && !config_.side_button_send;
+    const bool custom_buttons = UsesCustomButtons(active_device_id_);
+    const bool should_press_enter = config_.auto_enter && !config_.side_button_send && !custom_buttons;
     const auto device_id = active_device_id_;
     pending_paste_state_ = {};
     FinishRecognitionCycle();
@@ -1064,10 +1168,10 @@ void VoiceStickCoordinator::CompletePendingPaste(const std::string& text) {
         EnterError("Could not paste text. Focus the input and restore the last input to retry.", "paste_failed");
         return;
     }
-    if (config_.side_button_send) {
+    if (config_.side_button_send || custom_buttons) {
         pending_send_device_id_ = device_id;
         ui_->HideOverlay();
-        ui_->SetStatus("Side button: Send");
+        ui_->SetStatus(custom_buttons ? "文字已填入，按已配置的确认键发送" : "Side button: Send");
     }
 }
 
@@ -1352,7 +1456,7 @@ void VoiceStickCoordinator::EnterFinalizing(std::string_view reason) {
 
 void VoiceStickCoordinator::EnterPendingConfirmation(const std::string& text, std::string_view reason) {
     pending_paste_state_ = {PendingPasteKind::kWaitingToPaste, text};
-    if (config_.side_button_send) {
+    if (config_.side_button_send || UsesCustomButtons(active_device_id_)) {
         CompletePendingPaste(text);
         return;
     }

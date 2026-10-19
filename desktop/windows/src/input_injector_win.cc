@@ -1,4 +1,6 @@
 #include "input_injector_win.h"
+#include <algorithm>
+#include <vector>
 
 namespace voicestick {
 
@@ -54,25 +56,46 @@ std::wstring InputInjectorWin::Utf16FromUtf8(const std::string& text) {
 }
 
 bool InputInjectorWin::SendCtrlV() {
-    INPUT inputs[4]{};
-    for (auto& input : inputs) input.type = INPUT_KEYBOARD;
-    inputs[0].ki.wVk = inputs[3].ki.wVk = VK_CONTROL;
-    inputs[1].ki.wVk = inputs[2].ki.wVk = 'V';
-    inputs[2].ki.dwFlags = inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-    return SendInput(4, inputs, sizeof(INPUT)) == 4;
+    return SendShortcut(Shortcut{true, false, false, false, 'V'});
 }
 
 bool InputInjectorWin::SendEnter() {
     if (!last_paste_window_ || !IsWindow(last_paste_window_) ||
         GetForegroundWindow() != last_paste_window_) return false;
-    INPUT inputs[2]{};
-    for (auto& input : inputs) {
-        input.type = INPUT_KEYBOARD;
-        input.ki.wVk = VK_RETURN;
-    }
-    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-    if (SendInput(2, inputs, sizeof(INPUT)) != 2) return false;
+    if (!SendShortcut(Shortcut{false, false, false, false, VK_RETURN})) return false;
     last_paste_window_ = nullptr;
+    return true;
+}
+
+bool InputInjectorWin::SendShortcut(const Shortcut& shortcut) {
+    if (FormatShortcut(shortcut).empty() || !GetForegroundWindow()) return false;
+    // Do not combine injected shortcuts with physically held modifiers.
+    for (int key : {VK_CONTROL, VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN})
+        if (GetAsyncKeyState(key) & 0x8000) return false;
+    std::vector<WORD> keys;
+    if (shortcut.ctrl) keys.push_back(VK_CONTROL);
+    if (shortcut.shift) keys.push_back(VK_SHIFT);
+    if (shortcut.alt) keys.push_back(VK_MENU);
+    if (shortcut.win) keys.push_back(VK_LWIN);
+    keys.push_back(shortcut.key);
+    std::vector<INPUT> inputs;
+    auto append = [&](WORD key, bool up) {
+        INPUT input{}; input.type = INPUT_KEYBOARD; input.ki.wVk = key;
+        input.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+        if ((key >= VK_PRIOR && key <= VK_DOWN) || key == VK_INSERT || key == VK_DELETE || key == VK_LWIN)
+            input.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+        inputs.push_back(input);
+    };
+    for (auto key : keys) append(key, false);
+    for (auto it = keys.rbegin(); it != keys.rend(); ++it) append(*it, true);
+    auto sent = SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
+    if (sent != inputs.size()) {
+        // Release only keys whose down event was accepted, even after a partial send.
+        inputs.clear();
+        for (size_t i = (std::min)(size_t(sent), keys.size()); i > 0; --i) append(keys[i - 1], true);
+        if (!inputs.empty()) SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
+        return false;
+    }
     return true;
 }
 

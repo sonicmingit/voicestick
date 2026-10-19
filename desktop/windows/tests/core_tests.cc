@@ -1,4 +1,5 @@
 #include "asr_protocol.h"
+#include "../../../firmware/main/button_gestures.h"
 #include "ble_protocol.h"
 #include "byte_utils.h"
 #include "firmware_manifest.h"
@@ -9,6 +10,7 @@
 #include <cassert>
 #include <chrono>
 #include <functional>
+#include <fstream>
 #include <map>
 #include <optional>
 #include <set>
@@ -46,6 +48,10 @@ public:
                              const std::optional<std::string>& device_id) override {
         sent_interaction_modes.push_back(std::pair{mode, device_id});
     }
+    void SendButtonControl(const std::string& json, const std::string& device) override {
+        button_controls.emplace_back(device, json);
+    }
+    std::vector<std::pair<std::string, std::string>> button_controls;
     void UpdateFirmware(ByteVector,
                         const std::string&,
                         std::function<void(FirmwareUpdateProgress)>,
@@ -194,6 +200,8 @@ public:
         return true;
     }
 
+    bool SendShortcut(const Shortcut& s) override { shortcuts.push_back(FormatShortcut(s)); return true; }
+    std::vector<std::string> shortcuts;
     bool paste_result = true;
     bool send_result = true;
     int paste_count = 0;
@@ -965,7 +973,132 @@ void TestCoordinatorCloudUpgradeRecoversDeviceAfterAsrError() {
 
 } // namespace
 
+void TestButtonGestures() {
+    std::vector<bg_event_t> events;
+    auto emit = [](int, bg_event_t e, uint32_t, void* p) { static_cast<std::vector<bg_event_t>*>(p)->push_back(e); };
+    bg_state_t s{};
+    auto edge = [&](bool down, uint64_t now, bool doubles = true) { bg_edge(&s, 0, down, now, 500, 300, true, doubles, emit, &events); };
+    auto tick = [&](uint64_t now) { bg_tick(&s, 0, now, 500, 300, true, emit, &events); };
+    edge(true, 100); edge(false, 170); tick(469); assert(events.empty()); tick(470);
+    assert(events == std::vector<bg_event_t>{BG_SINGLE});
+    events.clear(); edge(true, 1000); edge(false, 1050); edge(true, 1200); edge(false, 1240); tick(1800);
+    assert(events == std::vector<bg_event_t>{BG_DOUBLE});
+    events.clear(); edge(true, 2000); tick(2499); assert(events.empty()); tick(2500); tick(2800); edge(false, 3000); tick(4000);
+    assert((events == std::vector<bg_event_t>{BG_LONG_START, BG_LONG_END}));
+    // A queued release past the threshold must still produce a complete hold.
+    events.clear(); edge(true, 5000); edge(false, 5550);
+    assert((events == std::vector<bg_event_t>{BG_LONG_START, BG_LONG_END}));
+    events.clear(); edge(true, 6000, false); edge(false, 6070, false);
+    assert(events == std::vector<bg_event_t>{BG_SINGLE});
+    events.clear(); edge(true, 7000); edge(false, 7050); edge(true, 7150); tick(7650); edge(false, 7800);
+    assert((events == std::vector<bg_event_t>{BG_SINGLE, BG_LONG_START, BG_LONG_END}));
+    // Reset on disconnect/config change discards an incomplete double click.
+    events.clear(); s = {}; edge(true, 8000); edge(false, 8050); s = {}; tick(9000); assert(events.empty());
+}
+
+void TestButtonBindings() {
+    ButtonBindings b;
+    assert(b.Validate().empty());
+    assert(b.actions[0] == "confirm_send" && b.actions[5] == "paste");
+    for (const auto& action : ButtonActions()) {
+        if (ShortcutForAction(action.id)) assert(ParseShortcut(FormatShortcut(*ShortcutForAction(action.id))));
+    }
+    for (auto text : {"Ctrl+V", "Ctrl+Shift+Z", "Win+Alt+F24", "Enter", "Shift+Enter", "Ctrl+PageDown"})
+        assert(ParseShortcut(FormatShortcut(*ParseShortcut(text))) == ParseShortcut(text));
+    for (auto text : {"", "Ctrl", "Ctrl+", "Ctrl+Ctrl+V", "Ctrl+V+Z", "F25", "Ctrl+Unknown"}) assert(!ParseShortcut(text));
+    b.actions[0] = "hold_record"; assert(!b.Validate().empty());
+    b = {}; b.actions[4] = "shortcut:Ctrl+Shift+Z"; assert(b.Validate().empty());
+    auto payload = b.FirmwarePayload(9);
+    assert(payload.find("\"rev\":9") != std::string::npos && payload.size() < 192);
+    b.long_press_ms = 100; assert(!b.Validate().empty());
+
+    const auto dir = std::filesystem::temp_directory_path() /
+        ("voicestick-buttons-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto path = dir / "config.toml";
+    auto config = AppConfig::Defaults();
+    config.buttons.actions[0] = "shortcut:Ctrl+Shift+V";
+    config.buttons.long_press_ms = 800;
+    config.button_presets["编辑 · 方案一"] = config.buttons;
+    config.Save(path);
+    auto loaded = AppConfig::Load(path);
+    assert(loaded.buttons == config.buttons && loaded.button_presets == config.button_presets);
+    { std::ofstream f(path); f << "side_button_send = false\ninteraction_mode = \"click_to_talk\"\n"; }
+    loaded = AppConfig::Load(path);
+    assert(!loaded.side_button_send && loaded.interaction_mode == InteractionMode::kClickToTalk);
+    assert(loaded.buttons == ButtonBindings{});
+    { std::ofstream f(path); f << "[buttons]\nlong_ms = 1\nactions = [\"bad\",\"none\",\"none\",\"none\",\"none\",\"none\"]\n"; }
+    assert(!AppConfig::Load(path).buttons.enabled);
+    std::filesystem::remove(path);
+    std::filesystem::remove(dir);
+}
+
+void TestCoordinatorCustomButtons() {
+    auto ble = std::make_unique<FakeBleCentral>(); auto* bp = ble.get();
+    auto asr = std::make_unique<FakeAsrClient>(); auto* ap = asr.get();
+    FakeUi ui; FakeInputInjector input;
+    AppConfig config = AppConfig::Defaults();
+    config.side_button_send = false; // Custom gesture flow still fills immediately, without Enter.
+    VoiceStickCoordinator c(config, std::move(ble), std::move(asr), &ui, &input); c.Start();
+    StateEvent info; info.event = "device_info"; info.button_gestures = 1;
+    bp->on_state_event("5A74", info);
+    assert(bp->button_controls.empty()); // device_info arrives before audio subscriptions complete.
+    bp->connected_device_ids.insert("5A74");
+    bp->on_connection_change({ConnectedDevice{"5A74", "VS-5A74"}});
+    assert(bp->button_controls.size() == 1);
+    auto gesture = [&](std::string event, unsigned slot, unsigned session = 0, unsigned rev = 1, std::string device = "5A74") {
+        StateEvent e; e.event = event; e.button = slot < 3 ? "primary" : "secondary";
+        e.slot = slot; e.session_id = session; e.revision = rev; e.duration_ms = 600;
+        bp->on_state_event(device, e);
+    };
+    gesture("button_gesture", 3); assert(input.shortcuts.empty()); // No ACK yet.
+    StateEvent ack; ack.event = "buttons_ready"; ack.revision = 1; bp->on_state_event("5A74", ack);
+    gesture("button_gesture", 3); gesture("button_gesture", 4); gesture("button_gesture", 5);
+    assert((input.shortcuts == std::vector<std::string>{"Ctrl+Z", "Ctrl+Y", "Ctrl+V"}));
+    gesture("button_gesture", 3, 0, 99); gesture("button_gesture", 3, 0, 1, "9999");
+    assert(input.shortcuts.size() == 3);
+    gesture("record_start", 2, 100);
+    gesture("button_gesture", 5); assert(input.shortcuts.size() == 3); // Busy guard.
+    bp->on_audio_frame("5A74", AudioDataFrame(100, 0));
+    gesture("record_stop", 2, 100);
+    bp->on_audio_frame("5A74", EmptyEndFrame(100, 1));
+    ap->on_final("custom text");
+    assert(input.paste_count == 1 && !input.pasted_enter && ui.final_countdowns.empty());
+    gesture("button_gesture", 0, 0, 1, "9999"); assert(input.enter_count == 0);
+    input.send_result = false; gesture("button_gesture", 0); assert(input.enter_count == 0);
+    input.send_result = true; gesture("button_gesture", 0); gesture("button_gesture", 0); assert(input.enter_count == 1);
+    // Editing disarms confirmation; config changes reject previous-revision events.
+    gesture("record_start", 2, 101); bp->on_audio_frame("5A74", AudioDataFrame(101, 0));
+    gesture("record_stop", 2, 101); bp->on_audio_frame("5A74", EmptyEndFrame(101, 1)); ap->on_final("next");
+    gesture("button_gesture", 3); gesture("button_gesture", 0); assert(input.enter_count == 1);
+    c.UpdateConfig(config); gesture("button_gesture", 3); assert(input.shortcuts.size() == 4);
+    ack.revision = 2; bp->on_state_event("5A74", ack);
+    gesture("button_gesture", 3, 0, 2); assert(input.shortcuts.size() == 5);
+    bp->on_state_event("5A74", ButtonEvent("button_down", "primary", 200));
+    assert(ui.show_listening_count == 2); // Legacy events in flight cannot start a second cycle.
+    config.buttons.actions[1] = "restore_last";
+    config.buttons.actions[5] = "cancel";
+    c.UpdateConfig(config);
+    ack.revision = 3; bp->on_state_event("5A74", ack);
+    gesture("button_gesture", 1, 0, 3);
+    assert(input.paste_count == 3 && input.pasted_text == "next");
+    gesture("button_gesture", 5, 0, 3); gesture("button_gesture", 0, 0, 3);
+    assert(input.enter_count == 1); // Cancel also disarms a previously pasted result.
+    ap->cancelled = false;
+    gesture("record_start", 2, 102, 3);
+    gesture("record_start", 2, 102, 3); // Duplicate start is idempotent.
+    assert(ui.show_listening_count == 3);
+    gesture("button_gesture", 5, 0, 3);
+    assert(ap->cancelled);
+    ap->on_final("cancelled text"); assert(input.paste_count == 3);
+    config.buttons.enabled = false; c.UpdateConfig(config);
+    assert(bp->button_controls.back().second == "{\"event\":\"buttons_off\"}");
+    gesture("button_gesture", 3, 0, 3); assert(input.shortcuts.size() == 5);
+}
+
 int main() {
+    TestButtonGestures();
+    TestButtonBindings();
+    TestCoordinatorCustomButtons();
     TestDeviceIds();
     TestAudioFrameParsing();
     TestStateParsing();

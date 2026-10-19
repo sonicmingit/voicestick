@@ -33,6 +33,7 @@ set_target_properties(winsparkle_lib PROPERTIES
 configure_file(src/version.h.in ${CMAKE_CURRENT_BINARY_DIR}/version.h)
 
 add_library(voicestick_core
+    src/button_bindings.cc
     src/app_config.cc
     src/asr_protocol.cc
     src/ble_protocol.cc
@@ -63,6 +64,7 @@ add_executable(VoiceStickApp WIN32
     src/subtitle_window.cc
     src/pair_device_dialog.cc
     src/onboarding_dialog.cc
+    src/button_settings_dialog.cc
     src/settings_dialog.cc
     resources/VoiceStick.rc
 )
@@ -100,6 +102,7 @@ add_custom_command(TARGET VoiceStickApp POST_BUILD
 
 add_executable(voicestick_windows_tests
     tests/core_tests.cc
+    ../../firmware/main/button_gestures.c
 )
 
 target_link_libraries(voicestick_windows_tests PRIVATE voicestick_core)
@@ -109,3 +112,10 @@ endif()
 
 enable_testing()
 add_test(NAME voicestick_windows_tests COMMAND voicestick_windows_tests)
+
+add_executable(voicestick_button_settings_tests tests/button_settings_tests.cc)
+target_link_libraries(voicestick_button_settings_tests PRIVATE voicestick_core user32 gdi32 comctl32)
+if(MSVC)
+    target_compile_options(voicestick_button_settings_tests PRIVATE /UNDEBUG)
+endif()
+add_test(NAME voicestick_button_settings_tests COMMAND voicestick_button_settings_tests)

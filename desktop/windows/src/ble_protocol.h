@@ -26,6 +26,10 @@ struct StateEvent {
     std::optional<std::uint32_t> duration_ms;
     std::string hardware;
     std::string firmware_version;
+    std::string gesture;
+    std::optional<std::uint32_t> button_gestures;
+    std::optional<std::uint32_t> revision;
+    std::optional<std::uint32_t> slot;
 };
 
 struct FirmwareOtaStateEvent {

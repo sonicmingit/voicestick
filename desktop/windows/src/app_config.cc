@@ -288,13 +288,13 @@ OutputProfile ParseOutputProfile(const toml::table& table, const OutputProfile& 
 
 } // namespace
 
-AppConfig AppConfig::Load() {
+AppConfig AppConfig::Load(const std::filesystem::path& path) {
     AppConfig config = Defaults();
-    std::ifstream input(ConfigPath());
+    std::ifstream input(path);
     if (!input) return config;
 
     try {
-        auto table = toml::parse(input, ConfigPath().native());
+        auto table = toml::parse(input, path.native());
 
         if (auto value = TomlString(table, "asr_provider")) config.asr_provider = AsrProviderFromName(*value);
         if (auto value = TomlString(table, "voicestick_api_key")) config.voicestick_api_key = *value;
@@ -350,6 +350,23 @@ AppConfig AppConfig::Load() {
             auto entry = ParsePairedDeviceEntry(value);
             if (!entry.device_id.empty()) config.paired_devices.push_back(entry);
         }
+        auto read_buttons = [](const toml::table& t) {
+            ButtonBindings b;
+            b.enabled = t["enabled"].value_or(true);
+            b.long_press_ms = t["long_ms"].value_or(500);
+            b.double_click_ms = t["double_ms"].value_or(300);
+            if (const auto* a = t["actions"].as_array(); a && a->size() == 6) {
+                for (size_t i = 0; i < 6; ++i) b.actions[i] = (*a)[i].value_or(std::string("none"));
+            }
+            if (!b.Validate().empty()) { b = {}; b.enabled = false; }
+            return b;
+        };
+        if (const auto* b = table["buttons"].as_table()) config.buttons = read_buttons(*b);
+        if (const auto* presets = table["button_presets"].as_table()) {
+            for (const auto& [key, node] : *presets) if (const auto* t = node.as_table()) {
+                config.button_presets[std::string(key.str())] = read_buttons(*t);
+            }
+        }
         return config;
     } catch (const toml::parse_error&) {
         input.clear();
@@ -359,9 +376,9 @@ AppConfig AppConfig::Load() {
     return config;
 }
 
-void AppConfig::Save() const {
-    std::filesystem::create_directories(ConfigDirectory());
-    std::ofstream output(ConfigPath(), std::ios::trunc);
+void AppConfig::Save(const std::filesystem::path& path) const {
+    if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path());
+    std::ofstream output(path, std::ios::trunc);
     if (!output) {
         throw std::runtime_error("failed to open config for writing");
     }
@@ -400,6 +417,18 @@ void AppConfig::Save() const {
             output << "  \"" << TomlEscape(FormatPairedDeviceEntry(entry)) << "\",\n";
         }
         output << "]\n";
+    }
+    auto write_buttons = [&](const ButtonBindings& b) {
+        output << "enabled = " << (b.enabled ? "true" : "false") << "\nlong_ms = " << b.long_press_ms
+               << "\ndouble_ms = " << b.double_click_ms << "\nactions = [";
+        for (size_t i = 0; i < 6; ++i) output << (i ? ", " : "") << "\"" << TomlEscape(b.actions[i]) << "\"";
+        output << "]\n";
+    };
+    output << "\n[buttons]\n";
+    write_buttons(buttons);
+    for (const auto& [name, b] : button_presets) {
+        output << "\n[button_presets.\"" << TomlEscape(name) << "\"]\n";
+        write_buttons(b);
     }
     output << "\n[output]\n";
     output << "target = \"" << OutputTargetName(default_output_profile.target) << "\"\n";
