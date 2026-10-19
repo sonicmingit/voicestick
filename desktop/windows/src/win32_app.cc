@@ -235,8 +235,8 @@ void Win32App::SetStatus(const std::string& status) {
         };
         const auto it = translations.find(status);
         status_ = it == translations.end() ? status : it->second;
-        if (overlay_ && (status == "Side button: Send" || status == "Return to original input to send")) {
-            overlay_->ShowSendReady(status == "Return to original input to send");
+        if (overlay_ && status == "Return to original input to send") {
+            overlay_->ShowReturnToInput();
         }
         RebuildTooltip();
     });

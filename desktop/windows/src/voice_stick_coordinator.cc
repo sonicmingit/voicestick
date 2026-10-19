@@ -1066,6 +1066,7 @@ void VoiceStickCoordinator::CompletePendingPaste(const std::string& text) {
     }
     if (config_.side_button_send) {
         pending_send_device_id_ = device_id;
+        ui_->HideOverlay();
         ui_->SetStatus("Side button: Send");
     }
 }

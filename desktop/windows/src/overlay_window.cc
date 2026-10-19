@@ -266,11 +266,9 @@ void OverlayWindow::ShowError(const std::string& text, std::function<void()> on_
     SetTimer(hwnd_, kAutoHideTimerId, 2000, nullptr);
 }
 
-void OverlayWindow::ShowSendReady(bool original_window_required) {
+void OverlayWindow::ShowReturnToInput() {
     pending_callback_ = {};
-    Show(Mode::kPaused,
-         original_window_required ? "请返回原输入窗口" : "文字已填入输入框，可先修改",
-         "按侧键确认发送");
+    Show(Mode::kPaused, "请返回原输入窗口", "按侧键确认发送");
     SetTimer(hwnd_, kAutoHideTimerId, 3000, nullptr);
 }
 
