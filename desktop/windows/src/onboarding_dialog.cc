@@ -70,7 +70,8 @@ HWND CreateCombo(HWND parent, int x, int y, int w, int h, UINT id, HINSTANCE ins
 } // namespace
 
 bool NeedsOnboarding(const AppConfig& config) {
-    return config.paired_device_ids.empty() || config.ActiveApiKey().empty();
+    return config.paired_device_ids.empty() ||
+           (config.asr_provider != AsrProvider::kDoubaoIme && config.ActiveApiKey().empty());
 }
 
 OnboardingDialog::OnboardingDialog(HINSTANCE instance, HWND parent, AppConfig config)
@@ -296,6 +297,7 @@ void OnboardingDialog::BuildAsrStep(int x, int y, int w) {
     controls_.push_back(provider_combo_);
     SendMessageW(provider_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"VoiceStick 云服务"));
     SendMessageW(provider_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"火山引擎"));
+    SendMessageW(provider_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"豆包输入法（测试）"));
 
     controls_.push_back(CreateStatic(hwnd_, L"API 密钥：", x, y + Dp(88), Dp(92), Dp(22),
                                      instance_, SS_RIGHT));
@@ -324,6 +326,7 @@ void OnboardingDialog::BuildReadyStep(int x, int y, int w) {
                                      instance_));
     const auto provider = config_.asr_provider == AsrProvider::kVoiceStickCloud
                               ? L"识别服务：VoiceStick 云服务"
+                              : config_.asr_provider == AsrProvider::kDoubaoIme ? L"识别服务：豆包输入法（测试）"
                               : L"识别服务：火山引擎";
     controls_.push_back(CreateStatic(hwnd_, provider, x, y + Dp(82), w, Dp(24), instance_));
     controls_.push_back(CreateStatic(hwnd_,
@@ -334,6 +337,7 @@ void OnboardingDialog::BuildReadyStep(int x, int y, int w) {
 void OnboardingDialog::LoadConfigIntoControls() {
     if (!provider_combo_) return;
     SendMessageW(provider_combo_, CB_SETCURSEL,
+                 config_.asr_provider == AsrProvider::kDoubaoIme ? 2 :
                  config_.asr_provider == AsrProvider::kVoiceStickCloud ? 0 : 1, 0);
     const auto& key = config_.asr_provider == AsrProvider::kVoiceStickCloud
                           ? config_.voicestick_api_key
@@ -349,11 +353,12 @@ void OnboardingDialog::LoadConfigIntoControls() {
 void OnboardingDialog::SaveControlsIntoConfig() {
     if (!provider_combo_) return;
     const int provider_idx = static_cast<int>(SendMessageW(provider_combo_, CB_GETCURSEL, 0, 0));
-    config_.asr_provider = provider_idx == 0 ? AsrProvider::kVoiceStickCloud : AsrProvider::kVolcengine;
+    config_.asr_provider = provider_idx == 0 ? AsrProvider::kVoiceStickCloud :
+                           provider_idx == 2 ? AsrProvider::kDoubaoIme : AsrProvider::kVolcengine;
     const auto api_key = Utf8(GetText(api_key_edit_));
     if (config_.asr_provider == AsrProvider::kVoiceStickCloud) {
         config_.voicestick_api_key = api_key;
-    } else {
+    } else if (config_.asr_provider == AsrProvider::kVolcengine) {
         config_.volcengine_api_key = api_key;
     }
     wchar_t resource_buf[256]{};
@@ -369,8 +374,11 @@ void OnboardingDialog::UpdateProviderVisibility() {
     const int provider_idx = static_cast<int>(SendMessageW(provider_combo_, CB_GETCURSEL, 0, 0));
     const bool is_cloud = provider_idx == 0;
     const bool api_key_empty = GetText(api_key_edit_).empty();
-    ShowWindow(resource_label_, is_cloud ? SW_HIDE : SW_SHOW);
-    ShowWindow(resource_combo_, is_cloud ? SW_HIDE : SW_SHOW);
+    const bool is_ime = provider_idx == 2;
+    EnableWindow(api_key_edit_, !is_ime);
+    ShowWindow(resource_label_, provider_idx == 1 ? SW_SHOW : SW_HIDE);
+    ShowWindow(resource_combo_, provider_idx == 1 ? SW_SHOW : SW_HIDE);
+    if (is_ime) SetStatus(L"完成向导后，请在设置中选择 VB-CABLE 通道，并安装配套测试固件。");
     ShowWindow(apply_trial_button_, is_cloud && api_key_empty ? SW_SHOW : SW_HIDE);
     const int full_w = Dp(430 - 104);
     const int api_w = is_cloud && api_key_empty ? full_w - Dp(116) : full_w;
@@ -457,7 +465,7 @@ bool OnboardingDialog::HasDevice() const {
 }
 
 bool OnboardingDialog::HasApiKey() const {
-    return !config_.ActiveApiKey().empty();
+    return config_.asr_provider == AsrProvider::kDoubaoIme || !config_.ActiveApiKey().empty();
 }
 
 std::wstring OnboardingDialog::DeviceSummary() const {

@@ -2,6 +2,7 @@
 #include "button_settings_dialog.h"
 #include "dpi_util.h"
 #include "voice_stick_cloud_api_win.h"
+#include "ime_voice_win.h"
 
 #include <ShlObj.h>
 #include <CommCtrl.h>
@@ -334,9 +335,10 @@ void SettingsDialog::BuildControls() {
                                            kIdProviderCombo, instance_));
     SendMessageW(provider_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"VoiceStick 云服务"));
     SendMessageW(provider_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"火山引擎"));
+    SendMessageW(provider_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"豆包输入法（测试）"));
     y += row_h + Dp(10);
 
-    remember_label(CreateLabel(hwnd_, L"API 密钥：", Dp(10), y + Dp(3), label_w,
+    api_key_label_ = remember_label(CreateLabel(hwnd_, L"API 密钥：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
     const int apply_btn_w = Dp(102);
     api_key_edit_ = remember(CreateEdit(hwnd_, ctrl_x, y, ctrl_w - apply_btn_w - Dp(8), Dp(24),
@@ -356,6 +358,24 @@ void SettingsDialog::BuildControls() {
                      reinterpret_cast<LPARAM>(Utf16(id).c_str()));
     }
     y += row_h + Dp(16);
+
+    ime_endpoint_combo_ = remember(CreateCombo(hwnd_, ctrl_x, Dp(58), ctrl_w, Dp(200), 2016, instance_));
+    ime_endpoint_ids_.clear();
+    try {
+        for (const auto& endpoint : ListImeAudioEndpoints()) {
+            ime_endpoint_ids_.push_back(endpoint.id);
+            SendMessageW(ime_endpoint_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(Utf16(endpoint.name).c_str()));
+        }
+    } catch (...) {}
+    if (ime_endpoint_ids_.empty())
+        SendMessageW(ime_endpoint_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"未找到 VB-CABLE，请先安装后重新打开设置"));
+    ime_shortcut_label_ = remember_label(CreateLabel(hwnd_, L"语音快捷键：", Dp(10), Dp(99), label_w, Dp(20), instance_));
+    ime_shortcut_combo_ = remember(CreateCombo(hwnd_, ctrl_x, Dp(96), ctrl_w, Dp(200), 2017, instance_));
+    SendMessageW(ime_shortcut_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"左 Ctrl + 左 Win（长按）"));
+    SendMessageW(ime_shortcut_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"右 Alt（长按）"));
+    ime_help_ = remember(CreateLeftLabel(hwnd_, L"豆包麦克风选 CABLE Output，语音快捷键需与这里一致。\n设备需升级配套测试固件，并在 Windows 蓝牙中配对。",
+                                         ctrl_x, Dp(134), ctrl_w, Dp(36), instance_));
+    y += Dp(40);
 
     remember_label(CreateLabel(hwnd_, L"识别热词：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
@@ -422,7 +442,14 @@ void SettingsDialog::BuildControls() {
 
 void SettingsDialog::LoadConfigIntoControls() {
     SendMessageW(provider_combo_, CB_SETCURSEL,
+                 config_.asr_provider == AsrProvider::kDoubaoIme ? 2 :
                  config_.asr_provider == AsrProvider::kVoiceStickCloud ? 0 : 1, 0);
+    int endpoint_index = -1;
+    for (size_t i = 0; i < ime_endpoint_ids_.size(); ++i)
+        if (ime_endpoint_ids_[i] == config_.ime_audio_endpoint) endpoint_index = static_cast<int>(i);
+    if (ime_endpoint_ids_.empty()) endpoint_index = 0;
+    SendMessageW(ime_endpoint_combo_, CB_SETCURSEL, endpoint_index, 0);
+    SendMessageW(ime_shortcut_combo_, CB_SETCURSEL, config_.ime_voice_shortcut == "right_alt" ? 1 : 0, 0);
 
     const auto& key = config_.asr_provider == AsrProvider::kVoiceStickCloud
                           ? config_.voicestick_api_key
@@ -449,12 +476,26 @@ void SettingsDialog::LoadConfigIntoControls() {
 void SettingsDialog::SaveSettings() {
     int provider_idx = static_cast<int>(SendMessageW(provider_combo_, CB_GETCURSEL, 0, 0));
     AsrProvider new_provider = (provider_idx == 0) ? AsrProvider::kVoiceStickCloud
-                                                   : AsrProvider::kVolcengine;
+                            : provider_idx == 2 ? AsrProvider::kDoubaoIme : AsrProvider::kVolcengine;
+    const int endpoint_index = (int)SendMessageW(ime_endpoint_combo_, CB_GETCURSEL, 0, 0);
+    if (new_provider == AsrProvider::kDoubaoIme) {
+        if (endpoint_index < 0 || endpoint_index >= (int)ime_endpoint_ids_.size()) {
+            MessageBoxW(hwnd_, L"请先安装 VB-CABLE，再选择一个音频通道。", L"豆包语音", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+        if (config_.default_output_profile.target == OutputTarget::kSubtitle ||
+            config_.default_output_profile.transform == TextTransform::kTranslate) {
+            MessageBoxW(hwnd_, L"豆包模式由输入法直接填入文字，请先将输出设置为原文输入。", L"豆包语音", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+        config_.ime_audio_endpoint = ime_endpoint_ids_[endpoint_index];
+        config_.ime_voice_shortcut = SendMessageW(ime_shortcut_combo_, CB_GETCURSEL, 0, 0) == 1 ? "right_alt" : "left_ctrl_win";
+    }
 
     auto api_key = Utf8(GetWindowText(api_key_edit_));
     if (new_provider == AsrProvider::kVoiceStickCloud) {
         config_.voicestick_api_key = api_key;
-    } else {
+    } else if (new_provider == AsrProvider::kVolcengine) {
         config_.volcengine_api_key = api_key;
     }
     config_.asr_provider = new_provider;
@@ -485,6 +526,17 @@ void SettingsDialog::SaveSettings() {
 void SettingsDialog::UpdateProviderVisibility() {
     int idx = static_cast<int>(SendMessageW(provider_combo_, CB_GETCURSEL, 0, 0));
     bool is_volcengine = (idx == 1);
+    const bool is_ime = idx == 2;
+    ShowWindow(api_key_edit_, is_ime ? SW_HIDE : SW_SHOW);
+    SetWindowTextW(api_key_label_, is_ime ? L"麦克风通道：" : L"API 密钥：");
+    EnableWindow(hotwords_edit_, !is_ime);
+    EnableWindow(llm_base_url_edit_, !is_ime);
+    EnableWindow(llm_api_key_edit_, !is_ime);
+    EnableWindow(llm_model_edit_, !is_ime);
+    ShowWindow(ime_endpoint_combo_, is_ime ? SW_SHOW : SW_HIDE);
+    ShowWindow(ime_shortcut_label_, is_ime ? SW_SHOW : SW_HIDE);
+    ShowWindow(ime_shortcut_combo_, is_ime ? SW_SHOW : SW_HIDE);
+    ShowWindow(ime_help_, is_ime ? SW_SHOW : SW_HIDE);
     ShowWindow(resource_combo_, is_volcengine ? SW_SHOW : SW_HIDE);
     ShowWindow(resource_label_, is_volcengine ? SW_SHOW : SW_HIDE);
     const bool is_cloud = (idx == 0);

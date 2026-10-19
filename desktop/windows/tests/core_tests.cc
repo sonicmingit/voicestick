@@ -5,6 +5,7 @@
 #include "firmware_manifest.h"
 #include "ogg_opus_muxer.h"
 #include "voice_stick_coordinator.h"
+#include "../../../firmware/components/voice_ble/voice_key_lease.h"
 
 #include <algorithm>
 #include <cassert>
@@ -1095,7 +1096,92 @@ void TestCoordinatorCustomButtons() {
     gesture("button_gesture", 3, 0, 3); assert(input.shortcuts.size() == 5);
 }
 
+class FakeImeVoice : public ImeVoiceSession {
+public:
+    int begins = 0, finishes = 0, cancels = 0;
+    std::vector<AudioFrame> audio;
+    void Begin(const AppConfig&, const std::string&, std::uint32_t) override { ++begins; }
+    void Push(const AudioFrame& frame) override { audio.push_back(frame); }
+    void HandleState(const std::string&, const StateEvent&) override {}
+    void Finish() override { ++finishes; }
+    void Cancel() override { ++cancels; }
+};
+
+void TestDoubaoVoiceLifecycle() {
+    assert(voice_key_modifiers(1) == 0x40); // Right Alt.
+    assert(voice_key_modifiers(2) == 0x09); // Left Ctrl + Left GUI.
+    assert(voice_key_modifiers(0) == 0 && voice_key_modifiers(3) == 0);
+    voice_key_lease_t lease{};
+    assert(!voice_key_lease_request(&lease, 0, true, 0));
+    assert(voice_key_lease_request(&lease, 1, true, 100));
+    assert(!voice_key_lease_expired(&lease, 2099));
+    assert(voice_key_lease_request(&lease, 1, true, 500));
+    assert(!voice_key_lease_request(&lease, 2, false, 501));
+    assert(!voice_key_lease_request(&lease, 2, true, 501));
+    assert(voice_key_lease_expired(&lease, 2500));
+    assert(voice_key_lease_request(&lease, 1, false, 2500));
+    assert(voice_key_lease_request(&lease, 2, true, 2600));
+    assert(!voice_key_lease_request(&lease, 1, false, 2601));
+    assert(lease.held && lease.session == 2);
+
+    auto config = AppConfig::Defaults(); config.asr_provider = AsrProvider::kDoubaoIme;
+    config.buttons.enabled = false;
+    assert(AsrProviderFromName("doubao_ime") == config.asr_provider);
+    assert(AsrProviderName(config.asr_provider) == "doubao_ime");
+    assert(config.ActiveApiKey().empty());
+    config.ime_voice_shortcut = "left_ctrl_win";
+    config.ime_audio_endpoint = "test-endpoint-with-quote\"and\\slash";
+    config.volcengine_api_key = "test-only-volcengine-key";
+    config.voicestick_api_key = "test-only-cloud-key";
+    const auto test_path = std::filesystem::temp_directory_path() /
+        ("voicestick-ime-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".toml");
+    config.Save(test_path);
+    auto restored = AppConfig::Load(test_path);
+    std::filesystem::remove(test_path);
+    assert(restored.asr_provider == config.asr_provider && restored.ime_voice_shortcut == "left_ctrl_win");
+    assert(restored.ime_audio_endpoint == config.ime_audio_endpoint);
+    assert(restored.volcengine_api_key == config.volcengine_api_key && restored.voicestick_api_key == config.voicestick_api_key);
+    auto ble = std::make_unique<FakeBleCentral>(); auto* b = ble.get();
+    b->connected_device_ids.insert("5A74");
+    auto asr = std::make_unique<FakeAsrClient>(); auto* a = asr.get();
+    auto ime = std::make_unique<FakeImeVoice>(); auto* m = ime.get();
+    FakeUi ui; FakeInputInjector input;
+    VoiceStickCoordinator coordinator(config, std::move(ble), std::move(asr), &ui, &input, {}, std::move(ime));
+    coordinator.Start();
+    StateEvent info; info.event = "device_info"; info.hid_voice = 1;
+    b->on_state_event("5A74", info);
+    b->on_state_event("5A74", ButtonEvent("button_down", "primary", 77));
+    assert(m->begins == 1 && !a->started);
+    a->on_partial("old ASR partial"); a->on_final("old ASR final"); a->on_error("old ASR error");
+    assert(input.paste_count == 0);
+    b->on_audio_frame("5A74", AudioDataFrame(77, 0));
+    b->on_state_event("5A74", ButtonEvent("button_up", "primary", 77));
+    assert(m->finishes == 0); // A release is not the final audio frame.
+    b->on_audio_frame("9999", AudioDataFrame(77, 1));
+    b->on_audio_frame("5A74", AudioDataFrame(78, 1));
+    b->on_audio_frame("5A74", AudioDataFrame(77, 1));
+    b->on_audio_frame("5A74", EmptyEndFrame(77, 2));
+    b->on_audio_frame("5A74", EmptyEndFrame(77, 2));
+    assert(m->audio.size() == 3 && m->finishes == 1 && !a->started);
+    m->on_complete("5A74", 77, "");
+    assert(input.paste_count == 0); // The input method owns transcription.
+    b->on_state_event("5A74", ButtonEvent("button_down", "primary", 78));
+    assert(m->begins == 2);
+    m->on_complete("5A74", 77, "late failure");
+    b->on_audio_frame("5A74", AudioDataFrame(78, 0));
+    assert(m->audio.size() == 4); // Stale completion did not cancel the new cycle.
+    const int before = m->cancels;
+    b->connected_device_ids.clear(); b->on_connection_change({});
+    assert(m->cancels > before);
+    m->on_complete("5A74", 78, "late disconnect");
+    assert(input.paste_count == 0);
+    b->connected_device_ids.insert("5A74");
+    b->on_state_event("5A74", ButtonEvent("button_down", "primary", 79));
+    assert(m->begins == 2); // Reconnect must negotiate HID capability again.
+}
+
 int main() {
+    TestDoubaoVoiceLifecycle();
     TestButtonGestures();
     TestButtonBindings();
     TestCoordinatorCustomButtons();

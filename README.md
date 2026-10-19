@@ -16,6 +16,7 @@ Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝
 - `desktop/linux/`：使用 GTK4 / libadwaita 的 Linux 桌面应用。
 - [通信协议](docs/通信协议.md)：StickS3 与 macOS 之间的 BLE 协议。
 - [自定义按键使用说明](docs/自定义按键使用说明.md)：Windows 0.4.0 六个手势、快捷键录制、预设和固件升级。
+- [豆包输入法接入测试](docs/豆包输入法接入测试.md)：开发分支的虚拟麦克风、语音快捷键与配套 BLE HID 固件。
 - [开发日志](docs/开发日志.md)：功能迭代、构建验证、硬件刷写和用户实测记录。
 - [StickS3 硬件与按键说明](docs/StickS3硬件与按键说明.md)：中文位置说明图、三个按键、麦克风和接口引脚表。
 - [火山引擎 ASR 技术说明](docs/火山引擎语音识别技术说明.md)：桌面客户端使用的语音识别接口说明。

@@ -228,6 +228,8 @@ namespace {
 
 void ApplyConfigValue(AppConfig& config, const std::string& key, const std::string& value) {
     if (key == "asr_provider") config.asr_provider = AsrProviderFromName(value);
+    if (key == "ime_audio_endpoint") config.ime_audio_endpoint = value;
+    if (key == "ime_voice_shortcut") config.ime_voice_shortcut = value;
     if (key == "voicestick_api_key") config.voicestick_api_key = value;
     if (key == "voicestick_cloud_url") config.voicestick_cloud_url = value;
     if (key == "volcengine_api_key" || key == "api_key") config.volcengine_api_key = value;
@@ -297,6 +299,8 @@ AppConfig AppConfig::Load(const std::filesystem::path& path) {
         auto table = toml::parse(input, path.native());
 
         if (auto value = TomlString(table, "asr_provider")) config.asr_provider = AsrProviderFromName(*value);
+        if (auto value = TomlString(table, "ime_audio_endpoint")) config.ime_audio_endpoint = *value;
+        if (auto value = TomlString(table, "ime_voice_shortcut")) config.ime_voice_shortcut = *value;
         if (auto value = TomlString(table, "voicestick_api_key")) config.voicestick_api_key = *value;
         if (auto value = TomlString(table, "voicestick_cloud_url")) config.voicestick_cloud_url = *value;
         if (auto value = TomlString(table, "volcengine_api_key")) config.volcengine_api_key = *value;
@@ -388,6 +392,8 @@ void AppConfig::Save(const std::filesystem::path& path) const {
         paired << paired_device_ids[i];
     }
     output << "asr_provider = \"" << AsrProviderName(asr_provider) << "\"\n";
+    output << "ime_audio_endpoint = \"" << TomlEscape(ime_audio_endpoint) << "\"\n";
+    output << "ime_voice_shortcut = \"" << TomlEscape(ime_voice_shortcut) << "\"\n";
     output << "voicestick_api_key = \"" << TomlEscape(voicestick_api_key) << "\"\n";
     output << "voicestick_cloud_url = \"" << TomlEscape(voicestick_cloud_url) << "\"\n";
     output << "volcengine_api_key = \"" << TomlEscape(volcengine_api_key) << "\"\n";
@@ -449,6 +455,7 @@ void AppConfig::Save(const std::filesystem::path& path) const {
 }
 
 std::string AppConfig::ActiveApiKey() const {
+    if (asr_provider == AsrProvider::kDoubaoIme) return {};
     return asr_provider == AsrProvider::kVoiceStickCloud ? voicestick_api_key : volcengine_api_key;
 }
 
@@ -526,10 +533,12 @@ OutputProfile AppConfig::OutputProfileForDevice(const std::optional<std::string>
 }
 
 std::string AsrProviderName(AsrProvider provider) {
+    if (provider == AsrProvider::kDoubaoIme) return "doubao_ime";
     return provider == AsrProvider::kVoiceStickCloud ? "voicestick_cloud" : "volcengine";
 }
 
 AsrProvider AsrProviderFromName(std::string_view name) {
+    if (name == "doubao_ime") return AsrProvider::kDoubaoIme;
     return name == "voicestick_cloud" ? AsrProvider::kVoiceStickCloud : AsrProvider::kVolcengine;
 }
 

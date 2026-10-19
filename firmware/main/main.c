@@ -501,7 +501,19 @@ static void ble_control_cb(const char *json)
     const cJSON *state = cJSON_GetObjectItemCaseSensitive(root, "state");
     const cJSON *text = cJSON_GetObjectItemCaseSensitive(root, "text");
     const cJSON *mode = cJSON_GetObjectItemCaseSensitive(root, "mode");
-    if (cJSON_IsString(event) && (strcmp(event->valuestring, "buttons") == 0 || strcmp(event->valuestring, "buttons_off") == 0)) {
+    if (cJSON_IsString(event) && strcmp(event->valuestring, "voice_key") == 0) {
+        const cJSON *session = cJSON_GetObjectItemCaseSensitive(root, "session_id");
+        const cJSON *down = cJSON_GetObjectItemCaseSensitive(root, "down");
+        const cJSON *cancel = cJSON_GetObjectItemCaseSensitive(root, "cancel");
+        const cJSON *shortcut = cJSON_GetObjectItemCaseSensitive(root, "shortcut");
+        if (cJSON_IsNumber(session) && session->valuedouble >= 1 && session->valuedouble <= UINT32_MAX &&
+            session->valuedouble == (double)(uint32_t)session->valuedouble && cJSON_IsNumber(down) &&
+            (down->valuedouble == 0 || down->valuedouble == 1))
+            (void)voice_ble_set_voice_key((uint32_t)session->valuedouble, down->valueint == 1,
+                cJSON_IsNumber(cancel) && cancel->valueint == 1,
+                !shortcut ? 1 : cJSON_IsNumber(shortcut) && (shortcut->valuedouble == 1 || shortcut->valuedouble == 2)
+                    ? (uint8_t)shortcut->valueint : 0);
+    } else if (cJSON_IsString(event) && (strcmp(event->valuestring, "buttons") == 0 || strcmp(event->valuestring, "buttons_off") == 0)) {
         app_event_t profile = {.type = APP_EVENT_BUTTON_PROFILE};
         if (strlen(json) < sizeof(profile.text)) {
             strcpy(profile.text, json);

@@ -129,6 +129,9 @@ std::optional<StateEvent> BleProtocol::ParseStateEvent(std::span<const std::uint
     event.button_gestures = JsonU32Value(json, "button_gestures");
     event.revision = JsonU32Value(json, "rev");
     event.slot = JsonU32Value(json, "slot");
+    event.hid_voice = JsonU32Value(json, "hid_voice");
+    event.key_down = JsonU32Value(json, "down");
+    event.key_ok = JsonU32Value(json, "ok");
     event.hardware = JsonStringValue(json, "hardware");
     event.firmware_version = JsonStringValue(json, "firmware_version");
     return event;

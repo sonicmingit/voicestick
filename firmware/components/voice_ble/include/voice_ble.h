@@ -47,6 +47,7 @@ esp_err_t voice_ble_request_slow_interval(void);
 esp_err_t voice_ble_send_device_info(void);
 esp_err_t voice_ble_send_gesture(const char *event, int slot, uint32_t session, uint32_t duration, uint32_t revision);
 esp_err_t voice_ble_send_buttons_ready(uint32_t revision);
+esp_err_t voice_ble_set_voice_key(uint32_t session_id, bool down, bool cancel, uint8_t shortcut);
 esp_err_t voice_ble_send_button_down(const char *button, uint32_t session_id);
 esp_err_t voice_ble_send_button_up(const char *button, uint32_t duration_ms,
                                    uint32_t session_id);

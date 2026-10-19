@@ -4,6 +4,7 @@
 #include "ble_central_win.h"
 #include "log.h"
 #include "resource.h"
+#include "ime_voice_win.h"
 
 #include <Shellapi.h>
 #include <winsparkle.h>
@@ -172,7 +173,12 @@ int Win32App::Run() {
             &input_injector_,
             [](const AppConfig& config) {
                 return std::make_unique<AsrClientWin>(config);
-            });
+            },
+            std::make_unique<ImeVoiceWin>(
+                [this](const std::string& device, const std::string& json) {
+                    ble_central_->SendButtonControl(json, device);
+                },
+                [this](std::function<void()> action) { DispatchToUi(std::move(action)); }));
         LogLine("Starting coordinator");
         coordinator_->Start();
         LogLine("Coordinator started");

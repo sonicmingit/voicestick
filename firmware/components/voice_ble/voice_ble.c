@@ -1,4 +1,5 @@
 #include "voice_ble.h"
+#include "voice_hid.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -25,8 +26,19 @@
 #include "nimble/nimble_port_freertos.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
+#include "store/config/ble_store_config.h"
+void ble_store_config_init(void);
 
 static const char *TAG = "voice_ble";
+static esp_err_t send_state_json(const char *json);
+static void hid_ack(uint32_t session, bool down, bool ok) {
+    char json[112];
+    snprintf(json, sizeof(json), "{\"event\":\"voice_key\",\"session_id\":%" PRIu32 ",\"down\":%d,\"ok\":%d}", session, down, ok);
+    (void)send_state_json(json);
+}
+esp_err_t voice_ble_set_voice_key(uint32_t session, bool down, bool cancel, uint8_t shortcut) {
+    return voice_hid_key(session, down, cancel, shortcut);
+}
 
 #define OTA_PROGRESS_NOTIFY_BYTES (32 * 1024)
 
@@ -457,6 +469,7 @@ static const struct ble_gatt_svc_def s_gatt_services[] = {
 static int gap_event_cb(struct ble_gap_event *event, void *arg)
 {
     (void)arg;
+    voice_hid_gap_event(event);
 
     switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
@@ -564,6 +577,13 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
         ESP_LOGD(TAG, "mtu=%u", event->mtu.value);
         return 0;
 
+    case BLE_GAP_EVENT_REPEAT_PAIRING: {
+        struct ble_gap_conn_desc peer;
+        if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &peer) == 0)
+            ble_store_util_delete_peer(&peer.peer_id_addr);
+        return BLE_GAP_REPEAT_PAIRING_RETRY;
+    }
+
     default:
         return 0;
     }
@@ -587,6 +607,12 @@ static void start_advertising(void)
     fields.uuids128 = &s_service_uuid;
     fields.num_uuids128 = 1;
     fields.uuids128_is_complete = 1;
+    static const ble_uuid16_t hid_service = BLE_UUID16_INIT(0x1812);
+    fields.uuids16 = &hid_service;
+    fields.num_uuids16 = 1;
+    fields.uuids16_is_complete = 1;
+    fields.appearance = 0x03C1;
+    fields.appearance_is_present = 1;
 
     int rc = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {
@@ -692,9 +718,13 @@ esp_err_t voice_ble_init(void)
 
     ble_hs_cfg.reset_cb = on_reset;
     ble_hs_cfg.sync_cb = on_sync;
-    ble_hs_cfg.sm_bonding = 0;
-    ble_hs_cfg.sm_our_key_dist = 0;
-    ble_hs_cfg.sm_their_key_dist = 0;
+    ble_hs_cfg.sm_bonding = 1;
+    ble_hs_cfg.sm_sc = 1;
+    ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
+    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_store_config_init();
+    ESP_RETURN_ON_ERROR(voice_hid_init(hid_ack), TAG, "HID service init failed");
 
     int rc = ble_svc_gap_device_name_set(s_device_name);
     ESP_RETURN_ON_FALSE(rc == 0, ESP_FAIL, TAG, "set device name failed rc=%d", rc);
@@ -909,7 +939,7 @@ esp_err_t voice_ble_send_device_info(void)
     snprintf(json, sizeof(json),
              "{\"event\":\"device_info\",\"hardware\":\"stick_s3\","
              "\"firmware_version\":\"%s\","
-             "\"button_gestures\":1,\"buttons\":[\"primary\",\"secondary\"],"
+             "\"button_gestures\":1,\"hid_voice\":1,\"buttons\":[\"primary\",\"secondary\"],"
              "\"interaction_modes\":[\"hold_to_talk\",\"click_to_talk\"]}",
              version);
     return send_state_json(json);

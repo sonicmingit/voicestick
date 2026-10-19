@@ -30,6 +30,9 @@ struct StateEvent {
     std::optional<std::uint32_t> button_gestures;
     std::optional<std::uint32_t> revision;
     std::optional<std::uint32_t> slot;
+    std::optional<std::uint32_t> hid_voice;
+    std::optional<std::uint32_t> key_down;
+    std::optional<std::uint32_t> key_ok;
 };
 
 struct FirmwareOtaStateEvent {

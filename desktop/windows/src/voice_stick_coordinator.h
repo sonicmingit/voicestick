@@ -7,6 +7,7 @@
 #include "firmware_manifest.h"
 #include "llm_translation_client.h"
 #include "ogg_opus_muxer.h"
+#include "ime_voice_session.h"
 
 #include <atomic>
 #include <chrono>
@@ -134,7 +135,8 @@ public:
                           std::unique_ptr<AsrClient> asr,
                           VoiceStickUi* ui,
                           InputInjector* input_injector,
-                          std::function<std::unique_ptr<AsrClient>(const AppConfig&)> asr_factory = {});
+                          std::function<std::unique_ptr<AsrClient>(const AppConfig&)> asr_factory = {},
+                          std::unique_ptr<ImeVoiceSession> ime_voice = {});
     ~VoiceStickCoordinator();
 
     void Start();
@@ -288,6 +290,8 @@ private:
     AppConfig config_;
     std::unique_ptr<BleCentral> ble_;
     std::unique_ptr<AsrClient> asr_;
+    std::unique_ptr<ImeVoiceSession> ime_voice_;
+    std::set<std::string> hid_voice_devices_;
     std::function<std::unique_ptr<AsrClient>(const AppConfig&)> asr_factory_;
     LLMTranslationClient translator_;
     VoiceStickUi* ui_;

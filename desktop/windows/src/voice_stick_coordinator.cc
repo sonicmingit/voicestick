@@ -31,10 +31,12 @@ VoiceStickCoordinator::VoiceStickCoordinator(AppConfig config,
                                              std::unique_ptr<AsrClient> asr,
                                              VoiceStickUi* ui,
                                              InputInjector* input_injector,
-                                             std::function<std::unique_ptr<AsrClient>(const AppConfig&)> asr_factory)
+                                             std::function<std::unique_ptr<AsrClient>(const AppConfig&)> asr_factory,
+                                             std::unique_ptr<ImeVoiceSession> ime_voice)
     : config_(std::move(config)),
       ble_(std::move(ble)),
       asr_(std::move(asr)),
+      ime_voice_(std::move(ime_voice)),
       asr_factory_(std::move(asr_factory)),
       translator_(config_),
       ui_(ui),
@@ -58,10 +60,23 @@ VoiceStickCoordinator::~VoiceStickCoordinator() {
 }
 
 void VoiceStickCoordinator::Start() {
+    if (ime_voice_) ime_voice_->on_complete = [this, alive = alive_](std::string device, std::uint32_t session, std::string error) {
+        if (!alive->load() || is_shutdown_ || active_device_id_ != device || active_session_id_ != session) return;
+        if (!error.empty()) ble_->SendButtonControl("{\"event\":\"record_cancel\"}", device);
+        active_session_id_.reset();
+        FinishRecognitionCycle();
+        if (error.empty()) {
+            EnterReady("ime_audio_complete");
+            ui_->SetStatus("语音已交给豆包，出字后可按确认键发送");
+        }
+        else EnterError(error, "ime_voice_failed");
+    };
     ble_->on_connection_change = [this](std::vector<ConnectedDevice> devices) {
         if (is_shutdown_) return;
         ui_->SetConnectedDevices(devices);
         CancelActiveCycleIfDeviceDisconnected();
+        for (auto it = hid_voice_devices_.begin(); it != hid_voice_devices_.end();)
+            if (!ble_->IsConnected(*it)) it = hid_voice_devices_.erase(it); else ++it;
         for (auto it = gesture_capable_devices_.begin(); it != gesture_capable_devices_.end();) {
             if (!ble_->IsConnected(*it)) {
                 acknowledged_button_revisions_.erase(*it);
@@ -108,6 +123,7 @@ void VoiceStickCoordinator::Start() {
 void VoiceStickCoordinator::Shutdown() {
     if (is_shutdown_) return;
     is_shutdown_ = true;
+    if (ime_voice_) { ime_voice_->on_complete = {}; ime_voice_->Cancel(); }
     pending_send_device_id_.reset();
     ble_->on_connection_change = nullptr;
     ble_->on_connection_error = nullptr;
@@ -274,21 +290,26 @@ void VoiceStickCoordinator::CancelFirmwareUpdate() {
 
 void VoiceStickCoordinator::ConfigureAsrCallbacks() {
     asr_->on_partial = [this](std::string text) {
+        if (config_.asr_provider == AsrProvider::kDoubaoIme) return;
         ui_->ShowPartial(text, active_device_id_);
         if (ShouldSendPartialToDevice()) {
             SendUiStateForActiveDevice("thinking", text);
         }
     };
     asr_->on_segment = [this](AsrSegment segment) {
+        if (config_.asr_provider == AsrProvider::kDoubaoIme) return;
         HandleDefiniteSegment(segment);
     };
     asr_->on_final = [this](std::string text) {
+        if (config_.asr_provider == AsrProvider::kDoubaoIme) return;
         FinishWithFinalText(text);
     };
     asr_->on_error = [this](std::string message) {
+        if (config_.asr_provider == AsrProvider::kDoubaoIme) return;
         FinishWithAsrError(message);
     };
     asr_->on_upgrade_url = [this](std::string url, std::string message) {
+        if (config_.asr_provider == AsrProvider::kDoubaoIme) return;
         const auto device_id = active_device_id_;
         RecoverFromAsrError(false);
         ui_->ShowCloudUpgrade(message, url, device_id);
@@ -324,7 +345,10 @@ void VoiceStickCoordinator::ConfigureSubtitleAsrCallbacks(SubtitleCycle* cycle) 
 }
 
 void VoiceStickCoordinator::HandleStateEvent(const StateEvent& event, const std::string& device_id) {
+    if (ime_voice_) ime_voice_->HandleState(device_id, event);
     if (event.event == "device_info") {
+        if (event.hid_voice == 1) hid_voice_devices_.insert(device_id);
+        else hid_voice_devices_.erase(device_id);
         ui_->SetDeviceInfo(DeviceInfo{device_id, event.hardware, event.firmware_version});
         UpdateDeviceFirmwareInfo(event, device_id);
         if (event.button_gestures == 1) {
@@ -412,6 +436,12 @@ void VoiceStickCoordinator::HandleGesture(const StateEvent& event, const std::st
     }
     if (session_state_ != SessionState::kReady || !pending_paste_state_.IsIdle() || !subtitle_cycles_.empty()) return;
     if (action == "confirm_send") {
+        if (config_.asr_provider == AsrProvider::kDoubaoIme) {
+            // Doubao owns the text; there is no VoiceStick paste token in this mode.
+            // A second explicit press can send the text already present in the focused field.
+            input_injector_->SendShortcut(Shortcut{false, false, false, false, 0x0D});
+            return;
+        }
         if (pending_send_device_id_ == device_id && input_injector_->SendEnter()) {
             pending_send_device_id_.reset(); ui_->HideOverlay(); ui_->SetStatus("Ready");
         }
@@ -504,6 +534,31 @@ void VoiceStickCoordinator::HandleSecondaryButtonClick(const std::string& device
 
 void VoiceStickCoordinator::HandlePrimaryButtonDown(std::optional<std::uint32_t> session_id,
                                                        const std::string& device_id) {
+    if (config_.asr_provider == AsrProvider::kDoubaoIme) {
+        if (session_state_ != SessionState::kReady || active_device_id_ || !session_id || *session_id == 0) return;
+        const auto profile = OutputProfileForDevice(device_id);
+        if (profile.target != OutputTarget::kFocusedApp || profile.transform != TextTransform::kOriginal) {
+            ble_->SendButtonControl("{\"event\":\"record_cancel\"}", device_id);
+            active_device_id_ = device_id;
+            EnterError("豆包模式请使用原文输入；字幕和翻译请切回 ASR 服务", "ime_output_unsupported");
+            return;
+        }
+        if (!ime_voice_ || !hid_voice_devices_.contains(device_id)) {
+            ble_->SendButtonControl("{\"event\":\"record_cancel\"}", device_id);
+            active_device_id_ = device_id;
+            EnterError("豆包语音需要配套 HID 测试固件，请先升级并在 Windows 中配对设备", "ime_firmware_required");
+            return;
+        }
+        active_device_id_ = device_id; active_session_id_ = session_id;
+        active_session_started_at_ = std::chrono::steady_clock::now();
+        received_audio_frames_ = 0; sent_final_audio_chunk_ = false; last_audio_seq_.reset();
+        pending_send_device_id_.reset();
+        SetSessionState(SessionState::kRecording, "ime_record_start");
+        SendUiStateForActiveDevice("recording");
+        ui_->ShowListening(device_id);
+        ime_voice_->Begin(config_, device_id, *session_id);
+        return;
+    }
     if (config_.default_output_profile.target == OutputTarget::kSubtitle) {
         HandleSubtitlePrimaryButtonDown(session_id, device_id);
         return;
@@ -542,6 +597,11 @@ void VoiceStickCoordinator::HandlePrimaryButtonDown(std::optional<std::uint32_t>
 }
 
 void VoiceStickCoordinator::HandlePrimaryButtonUp(const std::string& device_id) {
+    if (config_.asr_provider == AsrProvider::kDoubaoIme) {
+        if (active_device_id_ == device_id && active_session_id_ && !sent_final_audio_chunk_)
+            BeginWaitingForAudioEnd("ime_record_stop");
+        return;
+    }
     if (HasActiveSubtitleSession(device_id)) {
         HandleSubtitlePrimaryButtonUp(device_id);
         return;
@@ -557,6 +617,17 @@ void VoiceStickCoordinator::HandlePrimaryButtonUp(const std::string& device_id) 
 }
 
 void VoiceStickCoordinator::HandleAudioFrame(const AudioFrame& frame, const std::string& device_id) {
+    if (config_.asr_provider == AsrProvider::kDoubaoIme) {
+        if (!ime_voice_ || active_device_id_ != device_id || active_session_id_ != frame.session_id || sent_final_audio_chunk_) return;
+        ime_voice_->Push(frame);
+        if (!frame.payload.empty()) ++received_audio_frames_;
+        if (frame.IsEnd()) {
+            CancelAudioEndTimeout(); sent_final_audio_chunk_ = true;
+            EnterFinalizing("ime_audio_end");
+            ime_voice_->Finish();
+        }
+        return;
+    }
     const auto t0 = std::chrono::steady_clock::now();
     if (FindSubtitleCycle(device_id, frame.session_id)) {
         HandleSubtitleAudioFrame(frame, device_id);
@@ -818,6 +889,13 @@ bool VoiceStickCoordinator::StartSubtitleAsrAndFlushBufferedChunks(SubtitleCycle
 }
 
 void VoiceStickCoordinator::SendFinalOggChunkIfNeeded(double recording_duration_seconds) {
+    if (config_.asr_provider == AsrProvider::kDoubaoIme) {
+        // A missing END is an interrupted stream, never a successful submission.
+        if (ime_voice_) ime_voice_->Cancel();
+        active_session_id_.reset(); FinishRecognitionCycle();
+        EnterError("设备音频结束标记超时，本次语音已停止", "ime_end_timeout");
+        return;
+    }
     if (sent_final_audio_chunk_) return;
     sent_final_audio_chunk_ = true;
     CancelAudioEndTimeout();
@@ -1247,6 +1325,10 @@ void VoiceStickCoordinator::CancelActiveCycleIfDeviceDisconnected() {
         }
     }
     if (active_device_id_.has_value() && !ble_->IsConnected(*active_device_id_)) {
+        if (config_.asr_provider == AsrProvider::kDoubaoIme) {
+            active_session_id_.reset(); FinishRecognitionCycle(); EnterReady("ime_device_disconnected");
+            return;
+        }
         if (waiting_for_audio_end_.load()) {
             SendFinalOggChunkIfNeeded(CurrentRecordingDurationSeconds());
             return;
@@ -1261,6 +1343,7 @@ void VoiceStickCoordinator::CancelActiveCycleIfDeviceDisconnected() {
 }
 
 void VoiceStickCoordinator::FinishRecognitionCycle() {
+    if (ime_voice_) ime_voice_->Cancel();
     CancelAudioEndTimeout();
     asr_started_ = false;
     sent_final_audio_chunk_ = false;

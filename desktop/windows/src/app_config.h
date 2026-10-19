@@ -15,6 +15,7 @@ namespace voicestick {
 enum class AsrProvider {
     kVoiceStickCloud,
     kVolcengine,
+    kDoubaoIme,
 };
 
 enum class InteractionMode {
@@ -92,6 +93,8 @@ struct AppConfig {
     OutputProfile default_output_profile;
     std::map<std::string, OutputProfile> device_output_profiles;
     ButtonBindings buttons;
+    std::string ime_audio_endpoint;
+    std::string ime_voice_shortcut = "left_ctrl_win";
     std::map<std::string, ButtonBindings> button_presets;
     bool auto_enter = true;
     bool side_button_send = true;

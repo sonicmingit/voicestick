@@ -35,7 +35,8 @@ if (!$WinSparkleSource) { $WinSparkleSource = Join-Path $BuildDirectory '_deps/w
 $licenseFiles = @((Join-Path $projectDirectory 'LICENSE'),
     (Join-Path $projectDirectory 'desktop/windows/third_party/cjson/LICENSE'),
     (Join-Path $projectDirectory 'desktop/windows/third_party/tomlplusplus/LICENSE'),
-    (Join-Path $WinSparkleSource 'COPYING'), (Join-Path $WinSparkleSource 'COPYING.expat'))
+    (Join-Path $WinSparkleSource 'COPYING'), (Join-Path $WinSparkleSource 'COPYING.expat'),
+    (Join-Path $BuildDirectory '_deps/opus-src/COPYING'))
 $licenseText = foreach ($file in $licenseFiles) {
     if (!(Test-Path -LiteralPath $file)) { throw "License file missing: $file" }
     "=== $([IO.Path]::GetFileName((Split-Path -Parent $file)))/$([IO.Path]::GetFileName($file)) ==="

@@ -16,6 +16,17 @@ endif()
 
 include(FetchContent)
 
+set(OPUS_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(OPUS_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(OPUS_INSTALL_PKG_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
+set(OPUS_INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(opus
+    URL https://codeload.github.com/xiph/opus/tar.gz/5ec2f3c915d0529b94a3a302969c673531654824
+    URL_HASH SHA256=1b69698a330ebc8d712f0fe4cac01d049cbfb5d16e429f656818e94bb3751e98
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(opus)
+
 FetchContent_Declare(
     winsparkle
     URL https://github.com/vslavik/winsparkle/releases/download/v0.9.2/WinSparkle-0.9.2.zip
@@ -66,6 +77,7 @@ add_executable(VoiceStickApp WIN32
     src/onboarding_dialog.cc
     src/button_settings_dialog.cc
     src/settings_dialog.cc
+    src/ime_voice_win.cc
     resources/VoiceStick.rc
 )
 
@@ -92,6 +104,9 @@ target_link_libraries(VoiceStickApp PRIVATE
     comctl32
     ole32
     advapi32
+    opus
+    uuid
+    oleaut32
 )
 
 add_custom_command(TARGET VoiceStickApp POST_BUILD
@@ -112,6 +127,15 @@ endif()
 
 enable_testing()
 add_test(NAME voicestick_windows_tests COMMAND voicestick_windows_tests)
+
+add_executable(voicestick_ime_probe tests/ime_probe.cc src/ime_voice_win.cc)
+target_link_libraries(voicestick_ime_probe PRIVATE voicestick_core opus ole32 oleaut32 uuid user32 shell32)
+add_test(NAME voicestick_ime_opus_test COMMAND voicestick_ime_probe --self-test)
+add_executable(voicestick_ime_native_tests tests/ime_native_tests.cc src/ime_voice_win.cc)
+target_link_libraries(voicestick_ime_native_tests PRIVATE voicestick_core opus ole32 oleaut32 uuid user32 shell32)
+target_compile_options(voicestick_ime_native_tests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+add_test(NAME voicestick_ime_native_tests COMMAND voicestick_ime_native_tests)
+set_tests_properties(voicestick_ime_native_tests PROPERTIES TIMEOUT 15)
 
 add_executable(voicestick_button_settings_tests tests/button_settings_tests.cc)
 target_link_libraries(voicestick_button_settings_tests PRIVATE voicestick_core user32 gdi32 comctl32)

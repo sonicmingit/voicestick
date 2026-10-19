@@ -41,6 +41,7 @@ private:
 
     HWND provider_combo_ = nullptr;
     HWND api_key_edit_ = nullptr;
+    HWND api_key_label_ = nullptr;
     HWND apply_trial_button_ = nullptr;
     HWND resource_combo_ = nullptr;
     HWND hotwords_edit_ = nullptr;
@@ -51,13 +52,18 @@ private:
     HWND side_button_send_check_ = nullptr;
     HWND debug_dir_edit_ = nullptr;
     HWND resource_label_ = nullptr;
+    HWND ime_endpoint_combo_ = nullptr;
+    HWND ime_shortcut_combo_ = nullptr;
+    HWND ime_shortcut_label_ = nullptr;
+    HWND ime_help_ = nullptr;
+    std::vector<std::string> ime_endpoint_ids_;
     HFONT ui_font_ = nullptr;
     std::vector<BYTE> dialog_template_;
     std::vector<HWND> all_controls_;
     std::vector<HWND> label_controls_;
 
     static constexpr int kClientWidth = 640;
-    static constexpr int kClientHeight = 550;
+    static constexpr int kClientHeight = 590;
     static constexpr UINT kIdProviderCombo = 2001;
     static constexpr UINT kIdApiKeyEdit = 2002;
     static constexpr UINT kIdResourceCombo = 2003;
