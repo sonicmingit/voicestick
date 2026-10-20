@@ -108,6 +108,7 @@ jobs:
           path: firmware
           command: |
             set -euo pipefail
+            idf.py build
             version="$(tr -d '[:space:]' < version.txt)"
             mkdir -p ../dist
             cp build/voice_stick.bin "../dist/voicestick-firmware-sticks3-ota-${version}.bin"
