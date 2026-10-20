@@ -127,6 +127,7 @@ jobs:
           set -euo pipefail
           ota="voicestick-firmware-sticks3-ota-${VERSION}.bin"
           merged="voicestick-firmware-sticks3-merged-${VERSION}.bin"
+          sudo chown -R "$(id -u):$(id -g)" dist
           python3 - <<'PY'
           import hashlib
           import json
