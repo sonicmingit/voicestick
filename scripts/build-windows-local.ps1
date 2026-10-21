@@ -5,6 +5,7 @@ param(
     [string]$ToolchainEnvironment,
     [string]$WinSparkleSource,
     [string]$WixPath = 'wix',
+    [switch]$SkipTests,
     [ValidatePattern('^[a-zA-Z0-9_-]+$')]
     [string]$PackageSuffix = 'zh-CN_custom-buttons_x64'
 )
@@ -27,7 +28,9 @@ $configure = @('-S', (Join-Path $projectDirectory 'desktop/windows'), '-B', $Bui
 if ($WinSparkleSource) { $configure += "-DFETCHCONTENT_SOURCE_DIR_WINSPARKLE=$WinSparkleSource" }
 Invoke-Checked 'cmake' $configure
 Invoke-Checked 'cmake' @('--build', $BuildDirectory, '--parallel', '4')
-Invoke-Checked 'ctest' @('--test-dir', $BuildDirectory, '--output-on-failure')
+if (!$SkipTests) {
+    Invoke-Checked 'ctest' @('--test-dir', $BuildDirectory, '--output-on-failure')
+}
 
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $notices = Join-Path $OutputDirectory 'THIRD-PARTY-NOTICES.txt'

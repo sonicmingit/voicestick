@@ -1,0 +1,223 @@
+name: Windows and StickS3 Release
+
+on:
+  push:
+    tags: ["windows-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release versions
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Check tag and firmware version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          firmware_version="$(tr -d '[:space:]' < firmware/version.txt)"
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${tag}" != "windows-v${version}" ]]; then
+            echo "::error::Tag ${tag} does not match VERSION (${version})."
+            exit 1
+          fi
+          if [[ "${firmware_version}" != "${version}" ]]; then
+            echo "::error::Firmware version ${firmware_version} does not match VERSION (${version})."
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  build-windows:
+    name: Build Windows packages
+    needs: validate
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Configure MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          $wixTools = Join-Path $env:USERPROFILE '.dotnet\tools'
+          $env:PATH = "$wixTools;$env:PATH"
+          "$wixTools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          & (Join-Path $wixTools 'wix.exe') extension add --global WixToolset.UI.wixext/5.0.2
+          & (Join-Path $wixTools 'wix.exe') extension add --global WixToolset.Util.wixext/5.0.2
+
+      - name: Build MSI and portable ZIP
+        shell: pwsh
+        run: |
+          $outputDirectory = Join-Path $env:GITHUB_WORKSPACE 'build/windows-local'
+          $wixPath = Join-Path $env:USERPROFILE '.dotnet\tools\wix.exe'
+          & .\scripts\build-windows-local.ps1 `
+            -OutputDirectory $outputDirectory `
+            -WixPath $wixPath `
+            -SkipTests
+
+      - name: Upload Windows packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: voicestick-windows-${{ needs.validate.outputs.version }}
+          path: |
+            build/windows-local/VoiceStick_*.msi
+            build/windows-local/VoiceStick_*.zip
+          if-no-files-found: error
+
+  build-firmware:
+    name: Build StickS3 firmware
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Build firmware images
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.2
+          target: esp32s3
+          path: firmware
+          command: |
+            set -euo pipefail
+            idf.py build
+            version="$(tr -d '[:space:]' < version.txt)"
+            mkdir -p ../dist
+            cp build/voice_stick.bin "../dist/voicestick-firmware-sticks3-ota-${version}.bin"
+            cd build
+            esptool.py --chip esp32s3 merge_bin \
+              -o "../../dist/voicestick-firmware-sticks3-merged-${version}.bin" \
+              @flash_args
+
+      - name: Create GitHub release manifest
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ota="voicestick-firmware-sticks3-ota-${VERSION}.bin"
+          merged="voicestick-firmware-sticks3-merged-${VERSION}.bin"
+          sudo chown -R "$(id -u):$(id -g)" dist
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          repository = os.environ["REPOSITORY"]
+          tag = os.environ["TAG"]
+          base = f"https://github.com/{repository}/releases/download/{tag}"
+          ota_name = f"voicestick-firmware-sticks3-ota-{version}.bin"
+          merged_name = f"voicestick-firmware-sticks3-merged-{version}.bin"
+          ota = Path("dist") / ota_name
+          merged = Path("dist") / merged_name
+
+          def sha256(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          manifest = {
+              "hardware": "stick_s3",
+              "version": version,
+              "ota_url": f"{base}/{ota_name}",
+              "ota_sha256": sha256(ota),
+              "ota_size": ota.stat().st_size,
+              "merged_url": f"{base}/{merged_name}",
+              "merged_sha256": sha256(merged),
+              "merged_size": merged.stat().st_size,
+          }
+          Path("dist/manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload firmware images
+        uses: actions/upload-artifact@v4
+        with:
+          name: voicestick-firmware-${{ needs.validate.outputs.version }}
+          path: |
+            dist/*.bin
+            dist/manifest.json
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [validate, build-windows, build-firmware]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: voicestick-*
+          merge-multiple: true
+
+      - name: Create release checksum file
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum \
+            "VoiceStick_${VERSION}_zh-CN_custom-buttons_x64.msi" \
+            "VoiceStick_${VERSION}_zh-CN_custom-buttons_x64.zip" \
+            "voicestick-firmware-sticks3-ota-${VERSION}.bin" \
+            "voicestick-firmware-sticks3-merged-${VERSION}.bin" \
+            manifest.json > SHA256SUMS.txt
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: VoiceStick ${{ needs.validate.outputs.version }} Windows 中文定制版 + StickS3 固件
+          body_path: docs/发布说明-Windows-${{ needs.validate.outputs.version }}.md
+          fail_on_unmatched_files: true
+          files: |
+            dist/VoiceStick_${{ needs.validate.outputs.version }}_zh-CN_custom-buttons_x64.msi
+            dist/VoiceStick_${{ needs.validate.outputs.version }}_zh-CN_custom-buttons_x64.zip
+            dist/voicestick-firmware-sticks3-ota-${{ needs.validate.outputs.version }}.bin
+            dist/voicestick-firmware-sticks3-merged-${{ needs.validate.outputs.version }}.bin
+            dist/manifest.json
+            dist/SHA256SUMS.txt
