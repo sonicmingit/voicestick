@@ -60,6 +60,7 @@ Copy-Item -LiteralPath (Join-Path $BuildDirectory 'VoiceStick.exe'),
     (Join-Path $BuildDirectory 'WinSparkle.dll'), (Join-Path $projectDirectory 'LICENSE'), $notices -Destination $portable
 Copy-Item -LiteralPath (Join-Path $projectDirectory 'docs/Windows中文定制版说明.md') -Destination (Join-Path $portable '使用说明.md')
 Copy-Item -LiteralPath (Join-Path $projectDirectory 'docs/自定义按键使用说明.md') -Destination $portable
+Copy-Item -LiteralPath (Join-Path $projectDirectory 'docs/豆包输入法使用说明.md') -Destination $portable
 $releaseNotes = Join-Path $projectDirectory "docs/发布说明-Windows-$version.md"
 if (Test-Path -LiteralPath $releaseNotes) {
     Copy-Item -LiteralPath $releaseNotes -Destination (Join-Path $portable '更新说明.md')

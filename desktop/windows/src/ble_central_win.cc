@@ -6,7 +6,6 @@
 
 #include <winrt/Windows.Devices.Enumeration.h>
 #include <winrt/Windows.Foundation.Metadata.h>
-#include <winrt/Windows.Devices.Radios.h>
 #include <winrt/Windows.Storage.Streams.h>
 #include <winrt/base.h>
 
@@ -32,8 +31,6 @@ using winrt::Windows::Devices::Bluetooth::GenericAttributeProfile::GattClientCha
 using winrt::Windows::Devices::Bluetooth::GenericAttributeProfile::GattCommunicationStatus;
 using winrt::Windows::Devices::Bluetooth::GenericAttributeProfile::GattSession;
 using winrt::Windows::Devices::Bluetooth::GenericAttributeProfile::GattWriteOption;
-using winrt::Windows::Devices::Enumeration::DeviceInformation;
-using winrt::Windows::Devices::Enumeration::DeviceUnpairingResultStatus;
 using winrt::Windows::Storage::Streams::DataReader;
 using winrt::Windows::Storage::Streams::DataWriter;
 
@@ -540,96 +537,6 @@ winrt::Windows::Foundation::IAsyncAction WaitMs(std::chrono::milliseconds delay)
     co_await winrt::resume_after(TimeSpan{delay});
 }
 
-std::string UnpairStatusName(DeviceUnpairingResultStatus status) {
-    switch (status) {
-    case DeviceUnpairingResultStatus::Unpaired: return "Unpaired";
-    case DeviceUnpairingResultStatus::AlreadyUnpaired: return "AlreadyUnpaired";
-    case DeviceUnpairingResultStatus::OperationAlreadyInProgress: return "OperationAlreadyInProgress";
-    case DeviceUnpairingResultStatus::AccessDenied: return "AccessDenied";
-    case DeviceUnpairingResultStatus::Failed: return "Failed";
-    default: return "Unknown";
-    }
-}
-
-// Clears any stale Windows pairing/bond record so that subsequent GATT
-// connections do not attempt to encrypt with a long-term key the peripheral
-// no longer holds (which manifests as ESP32 NimBLE BLE_HS_EENCRYPT_KEY_SZ).
-winrt::Windows::Foundation::IAsyncOperation<bool> TryUnpairAsync(winrt::hstring device_id) {
-    try {
-        auto info = co_await DeviceInformation::CreateFromIdAsync(device_id);
-        if (!info) {
-            LogBleLine("unpair: DeviceInformation not found");
-            co_return false;
-        }
-        auto pairing = info.Pairing();
-        if (!pairing) {
-            LogBleLine("unpair: no pairing interface");
-            co_return false;
-        }
-        LogBleLine("unpair: IsPaired=" + std::string(pairing.IsPaired() ? "true" : "false") +
-                   " CanPair=" + std::string(pairing.CanPair() ? "true" : "false"));
-        // Always attempt UnpairAsync even if IsPaired() returns false:
-        // the Windows API "paired" state does not always reflect the
-        // controller-level bond/LTK cache.
-        auto result = co_await pairing.UnpairAsync();
-        LogBleLine("unpair: result=" + UnpairStatusName(result.Status()));
-        co_return result.Status() == DeviceUnpairingResultStatus::Unpaired ||
-               result.Status() == DeviceUnpairingResultStatus::AlreadyUnpaired;
-    } catch (const winrt::hresult_error& error) {
-        LogBleLine("unpair: exception hr=" + FormatHresult(error.code()));
-        co_return false;
-    } catch (...) {
-        LogBleLine("unpair: unknown exception");
-        co_return false;
-    }
-}
-
-winrt::Windows::Foundation::IAsyncOperation<bool> TryResetBluetoothRadioAsync() {
-    using winrt::Windows::Devices::Radios::Radio;
-    using winrt::Windows::Devices::Radios::RadioKind;
-    using winrt::Windows::Devices::Radios::RadioState;
-    using winrt::Windows::Devices::Radios::RadioAccessStatus;
-    try {
-        auto access = co_await Radio::RequestAccessAsync();
-        if (access != RadioAccessStatus::Allowed) {
-            LogBleLine("radio reset: access denied");
-            co_return false;
-        }
-        auto radios = co_await Radio::GetRadiosAsync();
-        for (const auto& radio : radios) {
-            if (radio.Kind() == RadioKind::Bluetooth) {
-                LogBleLine("radio reset: turning off");
-                co_await radio.SetStateAsync(RadioState::Off);
-                co_await WaitMs(std::chrono::milliseconds(2000));
-                LogBleLine("radio reset: turning on");
-                co_await radio.SetStateAsync(RadioState::On);
-                co_await WaitMs(std::chrono::milliseconds(3000));
-                LogBleLine("radio reset: complete");
-                co_return true;
-            }
-        }
-        LogBleLine("radio reset: no Bluetooth radio found");
-        co_return false;
-    } catch (const winrt::hresult_error& error) {
-        LogBleLine("radio reset: failed hr=" + FormatHresult(error.code()));
-        co_return false;
-    } catch (...) {
-        LogBleLine("radio reset: unknown error");
-        co_return false;
-    }
-}
-
-bool IsLikelyStaleBondError(std::int32_t hresult) {
-    // Common HRESULTs we have observed when Windows trips over a stale bond
-    // or has been left in an inconsistent state by a previous attempt.
-    // A timeout also frequently indicates a stale bond: GetGattServicesAsync
-    // hangs indefinitely when Windows holds a long-term key the peripheral
-    // no longer recognises.
-    return hresult == kErrorBadCommand ||
-           hresult == kErrorTimeout ||
-           hresult == static_cast<std::int32_t>(0x800710DF) || // ERROR_DEVICE_NOT_AVAILABLE
-           hresult == static_cast<std::int32_t>(0x8007048F);   // ERROR_DEVICE_NOT_CONNECTED
-}
 
 } // namespace
 
@@ -720,22 +627,8 @@ winrt::fire_and_forget BleCentralWin::ConnectDeviceAsync(std::uint64_t bluetooth
         LogBleLine("connecting VS-" + device_id + " address=" + FormatBluetoothAddress(bluetooth_address) +
                    " kind=" + AddressKindName(address_kind));
 
-        // Proactively remove any stale Windows pairing/bond before connecting.
-        // ESP32/NimBLE peripherals lose their bond when reset, but Windows
-        // caches the old LTK and tries to encrypt with it, causing
-        // BLE_HS_EENCRYPT_KEY_SZ (status=26) on the device and
-        // Unreachable GATT status on Windows.
-        {
-            auto probe_device = co_await open_device(address_type);
-            if (probe_device) {
-                if (co_await TryUnpairAsync(probe_device.DeviceId())) {
-                    LogBleLine("cleared stale Windows pairing for VS-" + device_id);
-                    co_await WaitMs(std::chrono::milliseconds(500));
-                }
-                probe_device.Close();
-            }
-        }
-
+        // Windows owns the HID pairing and encryption keys. Opening this GATT
+        // client must preserve that pairing so the keyboard driver stays attached.
         session->ble_device = co_await open_device(address_type);
         if (!session->ble_device) {
             fail("Windows could not open the BLE device. Make sure the device is advertising and try again.");
@@ -781,7 +674,6 @@ winrt::fire_and_forget BleCentralWin::ConnectDeviceAsync(std::uint64_t bluetooth
                        ? std::to_string(session->gatt_session.MaxPduSize()) : "n/a"));
 
         winrt::Windows::Devices::Bluetooth::GenericAttributeProfile::GattDeviceServicesResult service_result{nullptr};
-        bool unpair_attempted = false;
         for (int attempt = 1; attempt <= kServiceDiscoveryAttempts; ++attempt) {
             {
                 bool cancelled = false;
@@ -835,13 +727,6 @@ winrt::fire_and_forget BleCentralWin::ConnectDeviceAsync(std::uint64_t bluetooth
                            " attempt=" + std::to_string(attempt) +
                            " hr=" + FormatHresult(throw_hresult) +
                            " message=" + throw_message);
-                if (!unpair_attempted && IsLikelyStaleBondError(throw_hresult)) {
-                    unpair_attempted = true;
-                    LogBleLine("attempting to remove stale Windows pairing for VS-" + device_id);
-                    if (co_await TryUnpairAsync(session->ble_device.DeviceId())) {
-                        LogBleLine("stale Windows pairing removed for VS-" + device_id);
-                    }
-                }
                 if (attempt < kServiceDiscoveryAttempts) {
                     // Tear the device object down completely and re-open it.
                     // Reusing a BluetoothLEDevice that has already returned
@@ -849,6 +734,10 @@ winrt::fire_and_forget BleCentralWin::ConnectDeviceAsync(std::uint64_t bluetooth
                     // a fresh handle re-runs the OS connection state machine.
                     LogBleLine("recycling BluetoothLEDevice VS-" + device_id);
                     detach_device_handlers(session);
+                    if (session->gatt_session) {
+                        try { session->gatt_session.MaintainConnection(false); session->gatt_session.Close(); } catch (...) {}
+                        session->gatt_session = nullptr;
+                    }
                     try {
                         session->ble_device.Close();
                     } catch (...) {
@@ -879,7 +768,7 @@ winrt::fire_and_forget BleCentralWin::ConnectDeviceAsync(std::uint64_t bluetooth
                             "If the device is listed in \"Bluetooth & devices\" "
                             "settings, remove it first.";
                 }
-                fail("Windows BLE refused the connection" + hint);
+                fail("Windows BLE refused the connection; the Windows pairing has been preserved" + hint);
                 co_return;
             }
 
@@ -912,15 +801,10 @@ winrt::fire_and_forget BleCentralWin::ConnectDeviceAsync(std::uint64_t bluetooth
                 co_return;
             }
 
-            // Unreachable usually means the peripheral rejected the encrypted
-            // link (stale bond / LTK mismatch). Unpair, reset the Bluetooth
-            // radio to flush the controller-level key cache, then recycle.
-            if (status == GattCommunicationStatus::Unreachable && !unpair_attempted) {
-                unpair_attempted = true;
-                LogBleLine("Unreachable: removing stale Windows pairing for VS-" + device_id);
-                co_await TryUnpairAsync(session->ble_device.DeviceId());
-
-                LogBleLine("Unreachable: tearing down device handles before radio reset");
+            // A failed discovery is not proof of a stale bond. Retry with fresh
+            // application handles while keeping the Windows HID pairing intact.
+            if (status == GattCommunicationStatus::Unreachable) {
+                LogBleLine("Unreachable: recycling app handles; preserving Windows pairing for VS-" + device_id);
                 detach_device_handlers(session);
                 if (session->gatt_session) {
                     try { session->gatt_session.MaintainConnection(false); session->gatt_session.Close(); } catch (...) {}
@@ -928,17 +812,10 @@ winrt::fire_and_forget BleCentralWin::ConnectDeviceAsync(std::uint64_t bluetooth
                 }
                 try { session->ble_device.Close(); } catch (...) {}
                 session->ble_device = nullptr;
-
-                if (co_await TryResetBluetoothRadioAsync()) {
-                    LogBleLine("Unreachable: radio reset succeeded, reopening device");
-                } else {
-                    LogBleLine("Unreachable: radio reset skipped/failed, recycling anyway");
-                    co_await WaitMs(kDeviceReopenDelay);
-                }
-
+                co_await WaitMs(kDeviceReopenDelay);
                 session->ble_device = co_await open_device(address_type);
                 if (!session->ble_device) {
-                    fail("Windows could not reopen the BLE device after unpairing.");
+                    fail("Windows could not reopen the BLE device. The Windows pairing has been preserved.");
                     co_return;
                 }
                 attach_device_handlers(session);
@@ -1090,6 +967,18 @@ winrt::fire_and_forget BleCentralWin::ConnectDeviceAsync(std::uint64_t bluetooth
         // notifications on a high-throughput characteristic), and putting
         // state second has been observed to push device_info out by ~1s.
         LogBleLine("subscribing state notifications VS-" + device_id);
+        // A bonded connection can outlive this process through the Windows HID
+        // driver. Re-enabling an already enabled CCCD need not reach the device,
+        // so explicitly renew our own state subscription to request device_info.
+        auto state_reset = co_await session->state_characteristic
+            .WriteClientCharacteristicConfigurationDescriptorAsync(
+                GattClientCharacteristicConfigurationDescriptorValue::None);
+        LogBleLine("state subscription reset VS-" + device_id +
+                   " status=" + GattStatusName(state_reset));
+        if (state_reset != GattCommunicationStatus::Success) {
+            fail("state notification reset failed: " + GattStatusName(state_reset));
+            co_return;
+        }
         auto state_subscribe = co_await session->state_characteristic
             .WriteClientCharacteristicConfigurationDescriptorAsync(
                 GattClientCharacteristicConfigurationDescriptorValue::Notify);

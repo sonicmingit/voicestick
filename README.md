@@ -2,6 +2,8 @@
 
 Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝牙按键语音输入设备。
 
+**Windows 0.4.2 支持豆包输入法（测试）**：设备通过蓝牙 HID 唤起豆包，麦克风声音经 VB-CABLE 交给豆包识别并填入当前输入框，无需 ASR API Key。首次使用请按 [豆包输入法使用说明](docs/豆包输入法使用说明.md) 安装驱动、完成 Windows 配对并配置音频通道与快捷键。新版同时修复客户端删除系统配对、配对后重启客户端导致长按录音失效的问题，原有 API 模式继续可用。[下载客户端、固件及 VB-CABLE 驱动包](https://github.com/sonicmingit/voicestick/releases/tag/windows-v0.4.2)。
+
 **Windows 0.4.0 + 配套固件支持自定义按键**：主键／侧键各自可设置单击、双击、长按，默认主键单击发送、长按录音，侧键单击撤销、双击重做、长按粘贴。入口为「设置 → 按键与快捷键…」，详见 [自定义按键使用说明](docs/自定义按键使用说明.md)。以下侧键发送说明适用于旧固件或关闭自定义按键后的兼容模式。
 
 按住 StickS3 正面按键开始录音。松开后，macOS 菜单栏应用将音频发送给语音识别服务（ASR），显示识别文字，并在短暂的确认倒计时后，将最终结果粘贴到当前获得焦点的输入框。macOS 默认在粘贴后按回车，可在设置中关闭 `auto_enter`。Windows 0.4.0 默认采用主键长按录音、单击确认发送，详见 [自定义按键使用说明](docs/自定义按键使用说明.md)。
@@ -17,6 +19,7 @@ Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝
 - [通信协议](docs/通信协议.md)：StickS3 与 macOS 之间的 BLE 协议。
 - [自定义按键使用说明](docs/自定义按键使用说明.md)：Windows 0.4.0 六个手势、快捷键录制、预设和固件升级。
 - [豆包输入法接入测试](docs/豆包输入法接入测试.md)：开发分支的虚拟麦克风、语音快捷键与配套 BLE HID 固件。
+- [豆包输入法使用说明](docs/豆包输入法使用说明.md)：Windows 安装、VB-CABLE、系统配对、豆包配置、长按输入与故障排查。
 - [开发日志](docs/开发日志.md)：功能迭代、构建验证、硬件刷写和用户实测记录。
 - [StickS3 硬件与按键说明](docs/StickS3硬件与按键说明.md)：中文位置说明图、三个按键、麦克风和接口引脚表。
 - [火山引擎 ASR 技术说明](docs/火山引擎语音识别技术说明.md)：桌面客户端使用的语音识别接口说明。
@@ -32,6 +35,7 @@ Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝
 - 固件从 ES8311 麦克风读取 16 kHz 单声道 PCM，编码为 Opus 后通过 BLE 通知发送。
 - macOS 应用将收到的 Opus 数据封装为 Ogg Opus，通过 WebSocket 转发给 ASR。
 - ASR 支持直接接入火山引擎，或通过 VoiceStick Cloud 中转。
+- Windows 0.4.2 增加豆包输入法（测试）模式：VoiceStick 选择 CABLE Input 播放端，豆包麦克风选择 CABLE Output 录制端；通过已配对设备的 HID 键盘触发一致的语音快捷键。
 - 识别过程中，macOS 应用显示悬浮窗和菜单栏状态。松开按键后，固件屏幕保持思考状态，直到文字被粘贴或取消。
 - macOS 和 Linux 的最终文字进入 1.2 秒确认倒计时；期间按正面按键可暂停自动粘贴，再按一次确认粘贴，按侧键则取消。空闲时按侧键可恢复上一次仍可恢复的输入确认。
 - Windows 0.4.0 支持主键／侧键各自的单击、双击、长按，提供快捷键录制、可调时间参数和命名预设。识别结果直接填入输入框，不自动回车；默认单击主键确认发送。旧固件继续使用侧键发送兼容模式，详见 [自定义按键使用说明](docs/自定义按键使用说明.md)。
@@ -75,7 +79,7 @@ macOS 默认在粘贴后按回车。如需只粘贴，可在设置中关闭 `Pre
 StickS3 麦克风 -> ES8311/I2S PCM -> Opus -> BLE -> macOS -> Ogg Opus -> ASR -> 粘贴
 ```
 
-桌面应用直接转发 Ogg Opus，不会为了调用 ASR 而将 Opus 解码回 PCM。
+API 模式直接转发 Ogg Opus。Windows 豆包模式将 Opus 解码为 PCM，通过 WASAPI 写入 VB-CABLE，由豆包输入法识别。
 
 ## BLE 协议概览
 
@@ -263,7 +267,9 @@ translation_target = "en"
 
 | 字段 | 说明 |
 | --- | --- |
-| `asr_provider` | `volcengine`（火山引擎）或 `voicestick_cloud`（云中转） |
+| `asr_provider` | `volcengine`（火山引擎）、`voicestick_cloud`（云中转）；Windows 另支持 `doubao_ime`（豆包输入法测试模式） |
+| `ime_audio_endpoint` | Windows 豆包模式的 VB-CABLE 播放端 ID，在客户端设置中选择 CABLE Input 后自动保存 |
+| `ime_voice_shortcut` | Windows 豆包模式语音快捷键：`left_ctrl_win` 或 `right_alt`，需与豆包设置一致 |
 | `volcengine_api_key` | 直接接入火山引擎的 API Key，通过 `X-Api-Key` 发送 |
 | `voicestick_api_key` | VoiceStick Cloud 中转服务的 API Key，通过 `X-Api-Key` 发送 |
 | `voicestick_cloud_url` | 云中转服务的 WebSocket 地址 |
@@ -303,6 +309,8 @@ translation_target = "en"
 
 也可以手动编辑 `paired_device_ids`。保存多个 ID 后，桌面应用会忽略附近未配对的 VoiceStick 设备。
 
+Windows 豆包模式还需在 Windows 系统蓝牙设置中配对设备以加载 HID 键盘服务，步骤见 [豆包输入法使用说明](docs/豆包输入法使用说明.md#4-在-windows-中配对-vs-设备)。
+
 ## 调试音频
 
 启用方法：
@@ -324,3 +332,5 @@ macOS 默认输出目录：
 本仓库基于原作者的 [78/voicestick](https://github.com/78/voicestick) 项目修改和维护。原项目代码及贡献的版权仍归各自权利人所有；上游项目的许可证版权声明为 `Copyright (c) 2026 Terrence`。本仓库的后续修改不会取代、转移或取消原作者的版权声明，也不代表原作者为本仓库的改动背书。
 
 本项目采用 [MIT 许可证](LICENSE)。MIT 许可证允许使用、复制、修改和再分发，但分发本软件的副本或实质性部分时，必须保留原有版权声明和许可文本。因此，请勿在再分发时删除或替换 `LICENSE` 中原作者的版权声明。仓库内第三方依赖各自适用其目录中的许可证。项目及随附第三方依赖的中文许可译文见 [许可证中文参考译文](docs/许可证中文参考译文.md)。
+
+根目录的 `VBCABLE_Driver_Pack45.zip` 为 [VB-Audio](https://vb-audio.com/Cable/) 提供的 VB-CABLE 原始分发包，属于 Donationware，欢迎支持原作者；按包内 `readme.txt` 的版权和许可原样再分发，不适用本项目的 MIT 许可证。该 ZIP 同时作为 Release 独立附件提供，需用户单独安装。

@@ -41,6 +41,9 @@
           <File Id="VoiceStickExeFile" Source="$(var.BuildDir)\VoiceStick.exe" KeyPath="yes" />
           <?ifdef NoticesFile ?>
             <File Id="ThirdPartyNotices" Source="$(var.NoticesFile)" />
+            <File Id="WindowsGuide" Name="使用说明.md" Source="$(var.ProjectDir)\docs\Windows中文定制版说明.md" />
+            <File Id="DoubaoGuide" Source="$(var.ProjectDir)\docs\豆包输入法使用说明.md" />
+            <File Id="ButtonsGuide" Source="$(var.ProjectDir)\docs\自定义按键使用说明.md" />
           <?endif ?>
         </Component>
         <Component Id="WinSparkleDll" Guid="*" Bitness="always64">

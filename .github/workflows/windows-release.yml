@@ -78,8 +78,7 @@ jobs:
           $wixPath = Join-Path $env:USERPROFILE '.dotnet\tools\wix.exe'
           & .\scripts\build-windows-local.ps1 `
             -OutputDirectory $outputDirectory `
-            -WixPath $wixPath `
-            -SkipTests
+            -WixPath $wixPath
 
       - name: Upload Windows packages
         uses: actions/upload-artifact@v4
@@ -199,19 +198,25 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
+          cp VBCABLE_Driver_Pack45.zip dist/
+          cp docs/豆包输入法使用说明.md dist/
           cd dist
           sha256sum \
             "VoiceStick_${VERSION}_zh-CN_custom-buttons_x64.msi" \
             "VoiceStick_${VERSION}_zh-CN_custom-buttons_x64.zip" \
             "voicestick-firmware-sticks3-ota-${VERSION}.bin" \
             "voicestick-firmware-sticks3-merged-${VERSION}.bin" \
-            manifest.json > SHA256SUMS.txt
+            manifest.json \
+            VBCABLE_Driver_Pack45.zip \
+            豆包输入法使用说明.md > SHA256SUMS.txt
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: VoiceStick ${{ needs.validate.outputs.version }} Windows 中文定制版 + StickS3 固件
+          target_commitish: ${{ github.sha }}
+          make_latest: true
           body_path: docs/发布说明-Windows-${{ needs.validate.outputs.version }}.md
           fail_on_unmatched_files: true
           files: |
@@ -221,3 +226,5 @@ jobs:
             dist/voicestick-firmware-sticks3-merged-${{ needs.validate.outputs.version }}.bin
             dist/manifest.json
             dist/SHA256SUMS.txt
+            dist/VBCABLE_Driver_Pack45.zip
+            dist/豆包输入法使用说明.md
