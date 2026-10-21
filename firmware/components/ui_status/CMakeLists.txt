@@ -8,5 +8,5 @@ idf_component_register(
         "assets/cat_thinking_argb8888.bin"
         "assets/cat_resting_argb8888.bin"
         "assets/cat_error_argb8888.bin"
-    REQUIRES driver esp_driver_ledc esp_lcd esp_timer stick_s3_board lvgl
+    REQUIRES driver esp_app_format esp_driver_ledc esp_lcd esp_timer stick_s3_board lvgl
 )

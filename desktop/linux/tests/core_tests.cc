@@ -42,6 +42,10 @@ public:
                      const std::optional<std::string>& device_id) override {
         sent_ui_states.push_back(SentUiState{state, text, device_id});
     }
+    void SendSleepTimeout(int minutes, const std::optional<std::string>& device_id) override {
+        sent_sleep_timeouts.emplace_back(minutes, device_id);
+    }
+    std::vector<std::pair<int, std::optional<std::string>>> sent_sleep_timeouts;
     void SendInteractionMode(InteractionMode mode,
                              const std::optional<std::string>& device_id) override {
         sent_interaction_modes.push_back(std::pair{mode, device_id});
@@ -868,7 +872,55 @@ void TestCoordinatorCloudUpgradeRecoversDeviceAfterAsrError() {
 
 } // namespace
 
+void TestSleepTimeoutSettings() {
+    assert(AppConfig::Defaults().sleep_timeout_minutes == 5);
+    const auto path = std::filesystem::temp_directory_path() /
+        ("voicestick-sleep-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".toml");
+    auto config = AppConfig::Defaults();
+    for (int minutes : {1, 5, 10, 30, 60, 1440}) {
+        config.sleep_timeout_minutes = minutes;
+        config.Save(path);
+        assert(AppConfig::Load(path).sleep_timeout_minutes == minutes);
+        auto payload = BleProtocol::SleepTimeoutPayload(minutes);
+        assert(std::string(payload.begin(), payload.end()) ==
+               "{\"event\":\"sleep_timeout\",\"minutes\":" + std::to_string(minutes) + "}");
+    }
+    for (const auto* value : {"0", "-1", "1441", "1.5", "true", "\"bad\"", "999999999999999999999999999"}) {
+        { std::ofstream file(path); file << "sleep_timeout_minutes = " << value << "\n"; }
+        assert(AppConfig::Load(path).sleep_timeout_minutes == 5);
+    }
+    { std::ofstream file(path); file << "auto_enter = false\n"; }
+    assert(AppConfig::Load(path).sleep_timeout_minutes == 5); // Existing config migrates to 5.
+    { std::ofstream file(path); file << "sleep_timeout_minutes = 30\nbroken = [\n"; }
+    assert(AppConfig::Load(path).sleep_timeout_minutes == 30); // Legacy fallback parser.
+    { std::ofstream file(path); file << "sleep_timeout_minutes = 30junk\n"; }
+    assert(AppConfig::Load(path).sleep_timeout_minutes == 5);
+    std::filesystem::remove(path);
+
+    config.sleep_timeout_minutes = 30;
+    auto ble = std::make_unique<FakeBleCentral>();
+    auto* b = ble.get();
+    b->connected_device_ids.insert("5A74");
+    auto asr = std::make_unique<FakeAsrClient>();
+    FakeUi ui;
+    FakeInputInjector input;
+    VoiceStickCoordinator coordinator(config, std::move(ble), std::move(asr), &ui, &input);
+    coordinator.Start();
+    b->on_connection_change({{"5A74", "VS-5A74"}});
+    assert(b->sent_sleep_timeouts.back().first == 30);
+    assert(!b->sent_sleep_timeouts.back().second.has_value());
+    config.sleep_timeout_minutes = 60;
+    coordinator.UpdateConfig(config);
+    assert(b->sent_sleep_timeouts.back().first == 60); // Apply immediately.
+    b->connected_device_ids.clear();
+    b->on_connection_change({});
+    b->connected_device_ids.insert("5A74");
+    b->on_connection_change({{"5A74", "VS-5A74"}});
+    assert(b->sent_sleep_timeouts.back().first == 60); // Reapply on reconnect.
+}
+
 int main() {
+    TestSleepTimeoutSettings();
     TestDeviceIds();
     TestAudioFrameParsing();
     TestStateParsing();

@@ -777,6 +777,28 @@ void BleCentralBluez::SendUiState(const std::string& state,
     }
 }
 
+void BleCentralBluez::SendSleepTimeout(int minutes,
+                                          const std::optional<std::string>& device_id) {
+    if (minutes < 1 || minutes > 1440) return;
+    const auto payload = BleProtocol::SleepTimeoutPayload(minutes);
+    std::vector<std::pair<std::string, std::string>> targets;
+    {
+        std::lock_guard lock(impl_->mutex);
+        if (device_id) {
+            if (auto it = impl_->control_paths.find(*device_id); it != impl_->control_paths.end()) {
+                targets.emplace_back(*device_id, it->second);
+            }
+        } else {
+            for (const auto& [id, path] : impl_->control_paths) {
+                targets.emplace_back(id, path);
+            }
+        }
+    }
+    for (const auto& [id, path] : targets) {
+        WriteCharacteristicAsync(impl_->connection, path, payload);
+    }
+}
+
 void BleCentralBluez::SendInteractionMode(InteractionMode mode,
                                           const std::optional<std::string>& device_id) {
     const auto payload = BleProtocol::InteractionModePayload(InteractionModeName(mode));

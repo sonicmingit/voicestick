@@ -67,6 +67,7 @@ private:
     bool ShowOnboarding();
     void ShowPairDeviceDialog();
     void ShowSettings();
+    void UpdateSettingsVersions();
     void SaveInputOptions();
     void SaveDeviceThemeColor(const std::string& device_id, OverlayThemeColor color);
     void SaveDeviceOverlayPosition(const std::string& device_id, OverlayPosition position);
@@ -98,6 +99,7 @@ private:
     std::vector<ConnectedDevice> connected_devices_;
     std::vector<std::string> paired_device_ids_;
     std::map<std::string, DeviceInfo> device_info_map_;
+    std::map<std::string, std::string> live_firmware_versions_;
     std::map<std::string, DeviceFirmwareInfo> firmware_info_map_;
     std::optional<PairedDeviceEntry> pending_pairing_entry_;
     bool has_recoverable_input_ = false;

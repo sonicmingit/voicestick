@@ -17,6 +17,8 @@
 #include "esp_timer.h"
 #include "hal/gpio_types.h"
 #include "iot_button.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 
 #include "audio_pipeline.h"
 #include "button_gestures.h"
@@ -32,8 +34,11 @@ static const char *TAG = "voice_stick";
 #define DISPLAY_DIM_BRIGHTNESS 32
 #define DISPLAY_DIM_TIMEOUT_US (DISPLAY_DIM_TIMEOUT_MS * 1000ULL)
 #define BATTERY_REFRESH_FALLBACK_US (BATTERY_REFRESH_FALLBACK_MS * 1000ULL)
-#define DEEP_SLEEP_TIMEOUT_MS (5 * 60 * 1000)
-#define DEEP_SLEEP_TIMEOUT_US (DEEP_SLEEP_TIMEOUT_MS * 1000ULL)
+#define DEFAULT_SLEEP_TIMEOUT_MINUTES 5
+#define MAX_SLEEP_TIMEOUT_MINUTES 1440
+
+static uint32_t s_sleep_timeout_minutes = DEFAULT_SLEEP_TIMEOUT_MINUTES;
+static int64_t s_sleep_deadline_us;
 
 static bool s_recording;
 static bool s_ota_updating;
@@ -103,6 +108,7 @@ typedef enum {
     APP_EVENT_POWER_IRQ,
     APP_EVENT_BATTERY_REFRESH,
     APP_EVENT_ENTER_DEEP_SLEEP,
+    APP_EVENT_SLEEP_TIMEOUT,
     APP_EVENT_OTA_BEGIN,
     APP_EVENT_OTA_PROGRESS,
     APP_EVENT_OTA_DONE,
@@ -220,14 +226,57 @@ static void restart_deep_sleep_timer(void)
     }
 
     (void)esp_timer_stop(s_deep_sleep_timer);
+    s_sleep_deadline_us = 0;
     if (!s_recording && !s_ota_updating && !is_external_powered()) {
-        esp_err_t err = esp_timer_start_once(s_deep_sleep_timer, DEEP_SLEEP_TIMEOUT_US);
+        const uint64_t timeout_us = (uint64_t)s_sleep_timeout_minutes * 60 * 1000000;
+        s_sleep_deadline_us = esp_timer_get_time() + timeout_us;
+        esp_err_t err = esp_timer_start_once(s_deep_sleep_timer, timeout_us);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "start deep sleep timer failed: %s", esp_err_to_name(err));
         }
     } else if (is_external_powered()) {
         ESP_LOGD(TAG, "deep sleep timer paused while external power is present");
     }
+}
+
+static void load_sleep_timeout(void)
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+    nvs_handle_t handle;
+    err = nvs_open("power", NVS_READONLY, &handle);
+    if (err == ESP_OK) {
+        uint32_t minutes;
+        err = nvs_get_u32(handle, "sleep_minutes", &minutes);
+        if (err == ESP_OK && minutes >= 1 && minutes <= MAX_SLEEP_TIMEOUT_MINUTES) {
+            s_sleep_timeout_minutes = minutes;
+        }
+        nvs_close(handle);
+    }
+    ESP_LOGI(TAG, "auto sleep timeout: %lu minutes", (unsigned long)s_sleep_timeout_minutes);
+}
+
+static void apply_sleep_timeout(uint32_t minutes)
+{
+    if (minutes < 1 || minutes > MAX_SLEEP_TIMEOUT_MINUTES || minutes == s_sleep_timeout_minutes) return;
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open("power", NVS_READWRITE, &handle);
+    if (err == ESP_OK) {
+        err = nvs_set_u32(handle, "sleep_minutes", minutes);
+        if (err == ESP_OK) err = nvs_commit(handle);
+        nvs_close(handle);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "save sleep timeout failed: %s", esp_err_to_name(err));
+        return;
+    }
+    s_sleep_timeout_minutes = minutes;
+    restart_deep_sleep_timer();
+    ESP_LOGI(TAG, "auto sleep timeout set to %lu minutes", (unsigned long)minutes);
 }
 
 static void note_activity(void)
@@ -254,6 +303,8 @@ static void stop_host_response_timer(void)
 
 static void enter_deep_sleep(void)
 {
+    // An old timer event may still be queued after activity or a settings change.
+    if (s_sleep_deadline_us == 0 || esp_timer_get_time() < s_sleep_deadline_us) return;
     if (s_recording || s_ota_updating || voice_ble_ota_is_active()) {
         restart_deep_sleep_timer();
         return;
@@ -518,6 +569,17 @@ static void ble_control_cb(const char *json)
         if (strlen(json) < sizeof(profile.text)) {
             strcpy(profile.text, json);
             (void)xQueueSend(s_app_event_queue, &profile, 0);
+        }
+    } else if (cJSON_IsString(event) && strcmp(event->valuestring, "sleep_timeout") == 0) {
+        const cJSON *minutes = cJSON_GetObjectItemCaseSensitive(root, "minutes");
+        if (cJSON_IsNumber(minutes) && minutes->valuedouble >= 1 &&
+            minutes->valuedouble <= MAX_SLEEP_TIMEOUT_MINUTES &&
+            minutes->valuedouble == (double)minutes->valueint) {
+            app_event_t setting = {.type = APP_EVENT_SLEEP_TIMEOUT, .written = (uint32_t)minutes->valueint};
+            if (xQueueSend(s_app_event_queue, &setting, 0) != pdTRUE)
+                ESP_LOGW(TAG, "drop sleep timeout: app queue full");
+        } else {
+            ESP_LOGW(TAG, "ignore invalid sleep timeout (expected 1-1440 whole minutes)");
         }
     } else if (cJSON_IsString(event) && strcmp(event->valuestring, "record_cancel") == 0) {
         queue_app_event(APP_EVENT_RECORD_CANCEL);
@@ -868,6 +930,9 @@ static void app_event_task(void *arg)
         case APP_EVENT_ENTER_DEEP_SLEEP:
             enter_deep_sleep();
             break;
+        case APP_EVENT_SLEEP_TIMEOUT:
+            apply_sleep_timeout(event.written);
+            break;
         case APP_EVENT_OTA_BEGIN:
             if (s_custom_buttons) cancel_button_recording();
             s_ota_updating = true;
@@ -1131,6 +1196,7 @@ void app_main(void)
              esp_reset_reason(), esp_sleep_get_wakeup_cause(),
              (unsigned long long)esp_sleep_get_ext1_wakeup_status());
 
+    load_sleep_timeout();
     ESP_ERROR_CHECK(init_power_management());
     ESP_ERROR_CHECK(stick_s3_board_init());
     ESP_ERROR_CHECK(ui_status_init());

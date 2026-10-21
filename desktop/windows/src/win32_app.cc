@@ -5,6 +5,7 @@
 #include "log.h"
 #include "resource.h"
 #include "ime_voice_win.h"
+#include "version.h"
 
 #include <Shellapi.h>
 #include <winsparkle.h>
@@ -251,6 +252,12 @@ void Win32App::SetStatus(const std::string& status) {
 void Win32App::SetConnectedDevices(const std::vector<ConnectedDevice>& devices) {
     DispatchToUi([this, devices] {
         connected_devices_ = devices;
+        for (auto it = live_firmware_versions_.begin(); it != live_firmware_versions_.end();) {
+            if (std::none_of(devices.begin(), devices.end(), [&](const auto& device) { return device.id == it->first; }))
+                it = live_firmware_versions_.erase(it);
+            else ++it;
+        }
+        UpdateSettingsVersions();
         if (pair_device_dialog_) pair_device_dialog_->SetConnectedDevices(devices);
         RebuildTooltip();
     });
@@ -262,6 +269,8 @@ void Win32App::SetDeviceInfo(const DeviceInfo& info) {
                 " hardware=" + (info.hardware.empty() ? "<empty>" : info.hardware) +
                 " firmware=" + (info.firmware_version.empty() ? "<empty>" : info.firmware_version));
         device_info_map_[info.device_id] = info;
+        live_firmware_versions_[info.device_id] = info.firmware_version;
+        UpdateSettingsVersions();
         if (pair_device_dialog_) {
             pair_device_dialog_->SetDeviceInfo(info);
         }
@@ -653,6 +662,9 @@ void Win32App::RemoveTrayIcon() {
 
 void Win32App::ShowTrayMenu() {
     HMENU menu = CreatePopupMenu();
+    const auto client_version = Utf16(std::string("VoiceStick ") + VOICESTICK_VERSION_STR);
+    AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, client_version.c_str());
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     if (has_recoverable_input_) AppendMenuW(menu, MF_STRING, kMenuRestore, L"恢复上次输入");
     AppendMenuW(menu, MF_STRING, kMenuPairScan, L"配对设备…");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -921,7 +933,7 @@ void Win32App::RebuildTooltip() {
     data.hWnd = hwnd_;
     data.uID = kTrayIconId;
     data.uFlags = NIF_TIP | NIF_SHOWTIP;
-    auto tip = Utf16(std::string("VoiceStick - ") +
+    auto tip = Utf16(std::string("VoiceStick ") + VOICESTICK_VERSION_STR + " - " +
                      (connected_devices_.empty() ? "未连接" : "已连接") + "\n" + status_);
     wcsncpy_s(data.szTip, tip.c_str(), _TRUNCATE);
     Shell_NotifyIconW(NIM_MODIFY, &data);
@@ -982,7 +994,18 @@ void Win32App::ShowSettings() {
             LogLine("Settings saved");
         };
     }
+    UpdateSettingsVersions();
     settings_dialog_->Show();
+}
+
+void Win32App::UpdateSettingsVersions() {
+    if (!settings_dialog_) return;
+    std::map<std::string, std::string> versions;
+    for (const auto& device : connected_devices_) {
+        const auto it = live_firmware_versions_.find(device.id);
+        versions[device.id] = it != live_firmware_versions_.end() ? it->second : "";
+    }
+    settings_dialog_->SetFirmwareVersions(std::move(versions));
 }
 
 void Win32App::StartFirmwareUpdate(const std::string& device_id) {

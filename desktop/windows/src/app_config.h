@@ -83,6 +83,7 @@ struct AppConfig {
     std::string llm_base_url = "https://api.openai.com/v1";
     std::string llm_api_key;
     std::string llm_model = "gpt-5.5";
+    int sleep_timeout_minutes = 5;
     InteractionMode interaction_mode = InteractionMode::kHoldToTalk;
     std::string resource_id = "volc.seedasr.sauc.duration";
     std::vector<std::string> asr_hotwords;

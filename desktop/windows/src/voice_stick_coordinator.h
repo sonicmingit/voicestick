@@ -53,6 +53,7 @@ public:
     virtual void SendUiState(const std::string& state,
                                const std::string& text,
                                const std::optional<std::string>& device_id) = 0;
+    virtual void SendSleepTimeout(int minutes, const std::optional<std::string>& device_id) = 0;
     virtual void SendInteractionMode(InteractionMode mode,
                                      const std::optional<std::string>& device_id) = 0;
     virtual void SendButtonControl(const std::string& json, const std::string& device_id) {}

@@ -10,6 +10,7 @@
 
 #include "driver/ledc.h"
 #include "driver/spi_master.h"
+#include "esp_app_desc.h"
 #include "esp_check.h"
 #include "esp_err.h"
 #include "esp_lcd_panel_io.h"
@@ -57,6 +58,7 @@ static bool s_ready;
 static lv_display_t *s_display;
 static lv_obj_t *s_screen;
 static lv_obj_t *s_top_label;
+static lv_obj_t *s_version_label;
 static lv_obj_t *s_ble_dot;
 static lv_obj_t *s_status_label;
 static lv_obj_t *s_hint_label;
@@ -193,6 +195,7 @@ static void render_scene_locked(ui_status_icon_scene_t scene, const char *status
     lv_obj_set_style_bg_color(s_screen, bg, 0);
     lv_obj_set_style_text_color(s_screen, text, 0);
     lv_obj_set_style_text_color(s_top_label, muted, 0);
+    lv_obj_set_style_text_color(s_version_label, muted, 0);
     lv_obj_set_style_bg_color(s_ble_dot, ble, 0);
     lv_obj_set_style_text_color(s_status_label, text, 0);
     lv_obj_set_style_text_color(s_hint_label, hint_color, 0);
@@ -231,6 +234,18 @@ static void create_status_ui(void)
     lv_obj_align(s_ble_dot, LV_ALIGN_TOP_LEFT, 0, 6);
 
     create_battery_ui(s_screen);
+
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+    s_version_label = lv_label_create(s_screen);
+    lv_label_set_text_fmt(s_version_label, "FW %s",
+                          app_desc && app_desc->version[0] ? app_desc->version : "unknown");
+    lv_obj_set_style_text_font(s_version_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(s_version_label, lv_color_hex(0x7f7180), 0);
+    lv_label_set_long_mode(s_version_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(s_version_label, LCD_H_RES - 16);
+    lv_obj_set_style_text_align(s_version_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(s_version_label, LV_ALIGN_TOP_MID, 0, 22);
+
     ui_status_icons_create(&s_icons, s_screen);
 
     s_status_label = lv_label_create(s_screen);

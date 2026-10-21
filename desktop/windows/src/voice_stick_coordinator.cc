@@ -89,6 +89,7 @@ void VoiceStickCoordinator::Start() {
         }
         RefreshFirmwareAvailability();
         ui_->SetStatus(paired_device_ids_.empty() ? "Pair a VoiceStick" : "Ready");
+        ble_->SendSleepTimeout(config_.sleep_timeout_minutes, std::nullopt);
         ble_->SendInteractionMode(config_.interaction_mode, std::nullopt);
     };
     ble_->on_connection_error = [this](std::string device_id, std::string message) {
@@ -171,6 +172,7 @@ void VoiceStickCoordinator::UpdateConfig(AppConfig config) {
     config_ = std::move(config);
     translator_ = LLMTranslationClient(config_);
     for (const auto& device : gesture_capable_devices_) SyncButtons(device);
+    ble_->SendSleepTimeout(config_.sleep_timeout_minutes, std::nullopt);
     ble_->SendInteractionMode(config_.interaction_mode, std::nullopt);
     debug_audio_recorder_ = DebugAudioRecorder(config_.debug_audio_cache, config_.debug_audio_directory);
     if (asr_factory_) {

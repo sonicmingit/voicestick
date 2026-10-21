@@ -35,6 +35,7 @@ public:
     void SendUiState(const std::string& state,
                      const std::string& text,
                      const std::optional<std::string>& device_id) override;
+    void SendSleepTimeout(int minutes, const std::optional<std::string>& device_id) override;
     void SendInteractionMode(InteractionMode mode,
                              const std::optional<std::string>& device_id) override;
     void UpdateFirmware(ByteVector image,

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -264,6 +265,12 @@ void ApplyConfigValue(AppConfig& config, const std::string& key, const std::stri
     if (key == "llm_base_url") config.llm_base_url = value;
     if (key == "llm_api_key") config.llm_api_key = value;
     if (key == "llm_model") config.llm_model = value;
+    if (key == "sleep_timeout_minutes") {
+        int minutes = 0;
+        const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), minutes);
+        if (error == std::errc{} && end == value.data() + value.size() && minutes >= 1 && minutes <= 1440)
+            config.sleep_timeout_minutes = minutes;
+    }
     if (key == "interaction_mode") config.interaction_mode = InteractionModeFromName(value);
     if (key == "resource_id") config.resource_id = value;
     if (key == "asr_hotwords") config.asr_hotwords = ParseHotwordList(value);
@@ -336,6 +343,8 @@ AppConfig AppConfig::Load() {
         if (auto value = TomlString(table, "llm_base_url")) config.llm_base_url = *value;
         if (auto value = TomlString(table, "llm_api_key")) config.llm_api_key = *value;
         if (auto value = TomlString(table, "llm_model")) config.llm_model = *value;
+        if (auto minutes = table["sleep_timeout_minutes"].value<int64_t>(); table["sleep_timeout_minutes"].is_integer() && minutes && *minutes >= 1 && *minutes <= 1440)
+            config.sleep_timeout_minutes = static_cast<int>(*minutes);
         if (auto value = TomlString(table, "interaction_mode")) config.interaction_mode = InteractionModeFromName(*value);
         if (auto value = TomlString(table, "resource_id")) config.resource_id = *value;
         if (auto value = TomlString(table, "asr_hotwords")) config.asr_hotwords = ParseHotwordList(*value);
@@ -410,6 +419,7 @@ void AppConfig::Save() const {
     output << "llm_base_url = \"" << TomlEscape(llm_base_url) << "\"\n";
     output << "llm_api_key = \"" << TomlEscape(llm_api_key) << "\"\n";
     output << "llm_model = \"" << TomlEscape(llm_model) << "\"\n";
+    output << "sleep_timeout_minutes = " << sleep_timeout_minutes << "\n";
     output << "interaction_mode = \"" << InteractionModeName(interaction_mode) << "\"\n";
     output << "resource_id = \"" << TomlEscape(resource_id) << "\"\n";
     std::ostringstream hotwords;

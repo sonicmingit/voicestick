@@ -69,6 +69,7 @@ final class BleCentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     private var controlCharacteristics: [UUID: CBCharacteristic] = [:]
     private var otaCharacteristics: [UUID: CBCharacteristic] = [:]
     private var firmwareUpdateSession: FirmwareUpdateSession?
+    private var sleepTimeoutMinutes = 5
     private var interactionMode: InteractionMode = .holdToTalk
     private var isWorkspaceSleeping = false
 
@@ -142,6 +143,21 @@ final class BleCentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
             } else {
                 NSLog("BLE send ui_state skipped missing peripheral state=\(state) id=\(id) text_len=\(text.count)")
             }
+        }
+    }
+
+    func sendSleepTimeout(_ minutes: Int, to peripheralID: UUID? = nil) {
+        guard (1...1440).contains(minutes) else { return }
+        sleepTimeoutMinutes = minutes
+        let data = BleProtocol.sleepTimeoutPayload(minutes)
+        if let peripheralID {
+            if let characteristic = controlCharacteristics[peripheralID] {
+                peripherals[peripheralID]?.writeValue(data, for: characteristic, type: .withoutResponse)
+            }
+            return
+        }
+        for (id, characteristic) in controlCharacteristics {
+            peripherals[id]?.writeValue(data, for: characteristic, type: .withoutResponse)
         }
     }
 
@@ -288,6 +304,7 @@ final class BleCentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
                 controlCharacteristics[peripheral.identifier] = characteristic
                 sendUIState("ready", to: peripheral.identifier)
                 sendInteractionMode(interactionMode, to: peripheral.identifier)
+                sendSleepTimeout(sleepTimeoutMinutes, to: peripheral.identifier)
             case BleProtocol.otaRXUUID:
                 otaCharacteristics[peripheral.identifier] = characteristic
             case BleProtocol.otaStateUUID:

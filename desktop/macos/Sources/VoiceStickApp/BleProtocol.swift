@@ -112,6 +112,10 @@ enum BleProtocol {
         return (try? JSONSerialization.data(withJSONObject: payload)) ?? Data()
     }
 
+    static func sleepTimeoutPayload(_ minutes: Int) -> Data {
+        Data("{\"event\":\"sleep_timeout\",\"minutes\":\(minutes)}".utf8)
+    }
+
     static func interactionModePayload(_ mode: InteractionMode) -> Data {
         let payload = [
             "event": "interaction_mode",

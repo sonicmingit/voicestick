@@ -78,6 +78,21 @@ void PreferencesWindow::Build() {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(llm), ADW_PREFERENCES_GROUP(llm_group));
     adw_preferences_window_add(ADW_PREFERENCES_WINDOW(window_), ADW_PREFERENCES_PAGE(llm));
 
+    auto* device = adw_preferences_page_new();
+    adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(device), "Device");
+    auto* device_group = adw_preferences_group_new();
+    auto* sleep_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(sleep_row), "Auto sleep (minutes)");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(sleep_row), "1–1440, default 5. Battery only; requires updated firmware.");
+    sleep_timeout_spin_ = gtk_spin_button_new_with_range(1, 1440, 1);
+    gtk_spin_button_set_numeric(GTK_SPIN_BUTTON(sleep_timeout_spin_), TRUE);
+    gtk_widget_set_valign(sleep_timeout_spin_, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(sleep_row), sleep_timeout_spin_);
+    adw_action_row_set_activatable_widget(ADW_ACTION_ROW(sleep_row), sleep_timeout_spin_);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(device_group), sleep_row);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(device), ADW_PREFERENCES_GROUP(device_group));
+    adw_preferences_window_add(ADW_PREFERENCES_WINDOW(window_), ADW_PREFERENCES_PAGE(device));
+
     auto* debug = adw_preferences_page_new();
     adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(debug), "Debug");
     auto* debug_group = adw_preferences_group_new();
@@ -133,6 +148,7 @@ void PreferencesWindow::Load() {
     gtk_editable_set_text(GTK_EDITABLE(llm_url_row_), config_.llm_base_url.c_str());
     gtk_editable_set_text(GTK_EDITABLE(llm_key_row_), config_.llm_api_key.c_str());
     gtk_editable_set_text(GTK_EDITABLE(llm_model_row_), config_.llm_model.c_str());
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(sleep_timeout_spin_), config_.sleep_timeout_minutes);
     adw_switch_row_set_active(ADW_SWITCH_ROW(debug_row_), config_.debug_audio_cache);
     gtk_editable_set_text(GTK_EDITABLE(debug_dir_row_), config_.debug_audio_directory.string().c_str());
     UpdateAsrWidgets();
@@ -172,6 +188,8 @@ void PreferencesWindow::Save() {
     latest.llm_base_url = EditableText(llm_url_row_);
     latest.llm_api_key = EditableText(llm_key_row_);
     latest.llm_model = EditableText(llm_model_row_);
+    gtk_spin_button_update(GTK_SPIN_BUTTON(sleep_timeout_spin_));
+    latest.sleep_timeout_minutes = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(sleep_timeout_spin_));
     latest.debug_audio_cache = adw_switch_row_get_active(ADW_SWITCH_ROW(debug_row_));
     latest.debug_audio_directory = EditableText(debug_dir_row_);
     latest.Save();

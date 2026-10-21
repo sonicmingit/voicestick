@@ -132,6 +132,7 @@ struct AppConfig {
     var llmAPIKey: String
     var llmModel: String
     var interactionMode: InteractionMode
+    var sleepTimeoutMinutes: Int = 5
     var resourceID: String
     var asrHotwords: [String]
     var pairedDeviceIDs: [String]
@@ -219,6 +220,7 @@ struct AppConfig {
             llmAPIKey: file.llm_api_key ?? defaults.llmAPIKey,
             llmModel: file.llm_model ?? defaults.llmModel,
             interactionMode: interactionModeValue(file.interaction_mode, default: defaults.interactionMode),
+            sleepTimeoutMinutes: normalizedSleepTimeout(file.sleep_timeout_minutes),
             resourceID: resourceIDValue(file.resource_id, default: defaults.resourceID),
             asrHotwords: hotwordList(file.asr_hotwords ?? ""),
             pairedDeviceIDs: deviceIDList(file.paired_device_ids ?? ""),
@@ -256,6 +258,7 @@ struct AppConfig {
         llm_api_key = "\(llmAPIKey.tomlEscaped)"
         llm_model = "\(llmModel.tomlEscaped)"
         interaction_mode = "\(interactionMode.rawValue)"
+        sleep_timeout_minutes = \(Self.normalizedSleepTimeout(sleepTimeoutMinutes))
         resource_id = "\(resourceID.tomlEscaped)"
         asr_hotwords = "\(asrHotwords.joined(separator: ",").tomlEscaped)"
         paired_device_ids = "\(pairedDeviceIDs.joined(separator: ",").tomlEscaped)"
@@ -294,6 +297,7 @@ struct AppConfig {
             llmAPIKey: values["llm_api_key"] ?? defaults.llmAPIKey,
             llmModel: values["llm_model"] ?? defaults.llmModel,
             interactionMode: interactionModeValue(values["interaction_mode"], default: defaults.interactionMode),
+            sleepTimeoutMinutes: normalizedSleepTimeout(values["sleep_timeout_minutes"].flatMap { Int($0) }),
             resourceID: resourceIDValue(values["resource_id"], default: defaults.resourceID),
             asrHotwords: hotwordList(values["asr_hotwords"] ?? ""),
             pairedDeviceIDs: deviceIDList(values["paired_device_ids"] ?? ""),
@@ -320,6 +324,11 @@ struct AppConfig {
     static func openDebugAudioDirectory(_ directory: URL = defaultDebugAudioDirectory) {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         NSWorkspace.shared.open(directory)
+    }
+
+    static func normalizedSleepTimeout(_ minutes: Int?) -> Int {
+        guard let minutes, (1...1440).contains(minutes) else { return 5 }
+        return minutes
     }
 
     private static func boolValue(_ text: String?, default defaultValue: Bool) -> Bool {
@@ -519,6 +528,7 @@ private struct ConfigFile: Decodable {
     var llm_base_url: String?
     var llm_api_key: String?
     var llm_model: String?
+    var sleep_timeout_minutes: Int?
     var interaction_mode: String?
     var output_target: String?
     var text_transform: String?

@@ -30,6 +30,7 @@ private:
     GtkWidget* llm_url_row_ = nullptr;
     GtkWidget* llm_key_row_ = nullptr;
     GtkWidget* llm_model_row_ = nullptr;
+    GtkWidget* sleep_timeout_spin_ = nullptr;
     GtkWidget* debug_row_ = nullptr;
     GtkWidget* debug_dir_row_ = nullptr;
 };

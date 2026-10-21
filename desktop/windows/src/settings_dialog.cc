@@ -3,6 +3,7 @@
 #include "dpi_util.h"
 #include "voice_stick_cloud_api_win.h"
 #include "ime_voice_win.h"
+#include "version.h"
 
 #include <ShlObj.h>
 #include <CommCtrl.h>
@@ -136,6 +137,25 @@ SettingsDialog::~SettingsDialog() {
     }
 }
 
+void SettingsDialog::SetFirmwareVersions(std::map<std::string, std::string> versions) {
+    firmware_versions_ = std::move(versions);
+    UpdateVersionLabel();
+}
+
+void SettingsDialog::UpdateVersionLabel() {
+    if (!version_label_) return;
+    std::wstring text = L"客户端版本：" + Utf16(VOICESTICK_VERSION_STR) + L"    |    设备固件：";
+    if (firmware_versions_.empty()) {
+        text += L"未连接";
+    } else {
+        for (const auto& [device_id, version] : firmware_versions_) {
+            if (device_id != firmware_versions_.begin()->first) text += L"；";
+            text += L"VS-" + Utf16(device_id) + L" " + (version.empty() ? L"读取中…" : Utf16(version));
+        }
+    }
+    SetWindowTextW(version_label_, text.c_str());
+}
+
 void SettingsDialog::Show() {
     config_ = AppConfig::Load();
 
@@ -239,6 +259,8 @@ INT_PTR SettingsDialog::HandleMessage(UINT message, WPARAM w_param, LPARAM l_par
         llm_base_url_edit_ = nullptr;
         llm_api_key_edit_ = nullptr;
         llm_model_edit_ = nullptr;
+        sleep_timeout_edit_ = nullptr;
+        version_label_ = nullptr;
         debug_audio_check_ = nullptr;
         debug_dir_edit_ = nullptr;
         resource_label_ = nullptr;
@@ -267,7 +289,8 @@ LPCDLGTEMPLATE SettingsDialog::BuildDialogTemplate() {
     AppendDialogData(&dialog_template_, &dialog_template, sizeof(dialog_template));
     AppendDialogWord(&dialog_template_, 0);
     AppendDialogWord(&dialog_template_, 0);
-    AppendDialogWideString(&dialog_template_, L"VoiceStick 设置");
+    const auto title = L"VoiceStick 设置 - " + Utf16(VOICESTICK_VERSION_STR);
+    AppendDialogWideString(&dialog_template_, title.c_str());
     AppendDialogWord(&dialog_template_, 9);
     AppendDialogWideString(&dialog_template_, L"Microsoft YaHei UI");
     return reinterpret_cast<LPCDLGTEMPLATE>(dialog_template_.data());
@@ -301,6 +324,8 @@ void SettingsDialog::DestroyControls() {
     llm_base_url_edit_ = nullptr;
     llm_api_key_edit_ = nullptr;
     llm_model_edit_ = nullptr;
+    sleep_timeout_edit_ = nullptr;
+    version_label_ = nullptr;
     debug_audio_check_ = nullptr;
     debug_dir_edit_ = nullptr;
     resource_label_ = nullptr;
@@ -411,6 +436,17 @@ void SettingsDialog::BuildControls() {
                                                      BS_AUTOCHECKBOX));
     y += row_h + Dp(10);
 
+    remember_label(CreateLabel(hwnd_, L"设备自动睡眠：", Dp(10), y + Dp(3), label_w,
+                               Dp(20), instance_));
+    sleep_timeout_edit_ = remember(CreateEdit(hwnd_, ctrl_x, y, Dp(70), Dp(24),
+                                              kIdSleepTimeout, instance_, ES_NUMBER));
+    remember_label(CreateLeftLabel(hwnd_, L"分钟（1～1440，默认 5）", ctrl_x + Dp(80), y + Dp(3),
+                                   ctrl_w - Dp(80), Dp(20), instance_));
+    y += row_h + Dp(4);
+    remember_label(CreateLeftLabel(hwnd_, L"电池供电时生效；需配套新固件，USB 供电时不深度睡眠。",
+                                   ctrl_x, y, ctrl_w, Dp(18), instance_));
+    y += Dp(28);
+
     remember_label(CreateLabel(hwnd_, L"调试选项：", Dp(10), y + Dp(3), label_w,
                                Dp(20), instance_));
     debug_audio_check_ = remember(CreateButton(hwnd_, L"保存调试音频文件", ctrl_x, y,
@@ -434,6 +470,12 @@ void SettingsDialog::BuildControls() {
                           kIdSave, instance_));
     remember(CreateButton(hwnd_, L"取消", Dp(kClientWidth - 105), y, btn_w, btn_h,
                           kIdCancel, instance_));
+
+    version_label_ = remember_label(CreateWindowExW(0, L"STATIC", L"",
+        WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS,
+        Dp(20), Dp(kClientHeight - 23), Dp(kClientWidth - 40), Dp(18),
+        hwnd_, nullptr, instance_, nullptr));
+    UpdateVersionLabel();
 
     for (HWND control : all_controls_) {
         SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
@@ -469,11 +511,21 @@ void SettingsDialog::LoadConfigIntoControls() {
     SendMessageW(debug_audio_check_, BM_SETCHECK, config_.debug_audio_cache ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(side_button_send_check_, BM_SETCHECK, config_.side_button_send ? BST_CHECKED : BST_UNCHECKED, 0);
     SetWindowTextW(debug_dir_edit_, config_.debug_audio_directory.c_str());
+    SetWindowTextW(sleep_timeout_edit_, std::to_wstring(config_.sleep_timeout_minutes).c_str());
 
     UpdateProviderVisibility();
 }
 
 void SettingsDialog::SaveSettings() {
+    BOOL translated = FALSE;
+    const UINT sleep_minutes = GetDlgItemInt(hwnd_, kIdSleepTimeout, &translated, FALSE);
+    const auto sleep_text = GetWindowText(sleep_timeout_edit_);
+    if (!translated || sleep_text.find_first_not_of(L"0123456789") != std::wstring::npos ||
+        sleep_minutes < 1 || sleep_minutes > 1440) {
+        MessageBoxW(hwnd_, L"请输入 1～1440 之间的整数分钟数。", L"设备自动睡眠", MB_OK | MB_ICONINFORMATION);
+        SetFocus(sleep_timeout_edit_);
+        return;
+    }
     int provider_idx = static_cast<int>(SendMessageW(provider_combo_, CB_GETCURSEL, 0, 0));
     AsrProvider new_provider = (provider_idx == 0) ? AsrProvider::kVoiceStickCloud
                             : provider_idx == 2 ? AsrProvider::kDoubaoIme : AsrProvider::kVolcengine;
@@ -512,6 +564,7 @@ void SettingsDialog::SaveSettings() {
         config_.resource_id = Utf8(resource_buf);
     }
 
+    config_.sleep_timeout_minutes = static_cast<int>(sleep_minutes);
     config_.debug_audio_cache = SendMessageW(debug_audio_check_, BM_GETCHECK, 0, 0) == BST_CHECKED;
     config_.side_button_send = SendMessageW(side_button_send_check_, BM_GETCHECK, 0, 0) == BST_CHECKED;
 

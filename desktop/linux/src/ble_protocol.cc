@@ -152,6 +152,11 @@ ByteVector BleProtocol::UiStatePayload(std::string_view state, std::string_view 
     return ByteVector(json.begin(), json.end());
 }
 
+ByteVector BleProtocol::SleepTimeoutPayload(int minutes) {
+    const auto json = std::string("{\"event\":\"sleep_timeout\",\"minutes\":") + std::to_string(minutes) + "}";
+    return ByteVector(json.begin(), json.end());
+}
+
 ByteVector BleProtocol::InteractionModePayload(std::string_view mode) {
     const auto json = std::string("{\"event\":\"interaction_mode\",\"mode\":\"") +
                       JsonEscape(mode) + "\"}";

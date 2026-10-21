@@ -10,6 +10,7 @@ final class SettingsWindowController: NSWindowController {
     private let llmBaseURLField = NSTextField()
     private let llmAPIKeyField = NSTextField()
     private let llmModelField = NSTextField()
+    private let sleepTimeoutField = NSTextField()
     private let debugAudioButton = NSButton(checkboxWithTitle: "Save debug audio files", target: nil, action: nil)
     private let debugAudioDirectoryField = NSTextField()
     private let statusLabel = NSTextField(labelWithString: "")
@@ -22,7 +23,7 @@ final class SettingsWindowController: NSWindowController {
     init(config: AppConfig = AppConfig.load()) {
         self.config = config
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 700),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -84,6 +85,11 @@ final class SettingsWindowController: NSWindowController {
         stack.addArrangedSubview(row(label: "Base URL", control: llmBaseURLField))
         stack.addArrangedSubview(row(label: "API Key", control: llmAPIKeyField))
         stack.addArrangedSubview(row(label: "Model", control: llmModelField))
+
+        stack.addArrangedSubview(sectionTitle("Device"))
+        stack.addArrangedSubview(row(label: "Auto sleep (min)", control: sleepTimeoutField))
+        stack.addArrangedSubview(hintRow("1–1440 minutes; default 5."))
+        stack.addArrangedSubview(hintRow("Battery only. Requires updated firmware."))
 
         stack.addArrangedSubview(sectionTitle("Debug"))
         stack.addArrangedSubview(row(label: "Audio Cache", control: debugAudioButton))
@@ -191,6 +197,7 @@ final class SettingsWindowController: NSWindowController {
         llmBaseURLField.stringValue = config.llmBaseURL
         llmAPIKeyField.stringValue = config.llmAPIKey
         llmModelField.stringValue = config.llmModel
+        sleepTimeoutField.stringValue = String(config.sleepTimeoutMinutes)
         debugAudioButton.state = config.debugAudioCache ? .on : .off
         debugAudioDirectoryField.stringValue = config.debugAudioDirectory.path
 
@@ -266,6 +273,12 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func saveSettings() {
+        guard let sleepMinutes = Int(sleepTimeoutField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)),
+              (1...1440).contains(sleepMinutes) else {
+            showErrorAlert(title: "Invalid Auto Sleep Time", message: "Enter a whole number of minutes from 1 to 1440.")
+            window?.makeFirstResponder(sleepTimeoutField)
+            return
+        }
         saveDisplayedAPIKey()
         let provider = selectedProvider()
         let resourceID = resourcePopup.titleOfSelectedItem ?? config.resourceID
@@ -279,6 +292,7 @@ final class SettingsWindowController: NSWindowController {
             llmAPIKey: llmAPIKeyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
             llmModel: llmModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
             interactionMode: config.interactionMode,
+            sleepTimeoutMinutes: sleepMinutes,
             resourceID: resourceID,
             asrHotwords: AppConfig.hotwordList(hotwordsTextView.string),
             pairedDeviceIDs: config.pairedDeviceIDs,

@@ -5,6 +5,7 @@
 #include <Windows.h>
 
 #include <functional>
+#include <map>
 #include <vector>
 
 namespace voicestick {
@@ -15,6 +16,7 @@ public:
     ~SettingsDialog();
 
     void Show();
+    void SetFirmwareVersions(std::map<std::string, std::string> versions);
 
     std::function<void(AppConfig)> on_config_changed;
 
@@ -26,6 +28,7 @@ private:
     void DestroyControls();
     void BuildControls();
     void LoadConfigIntoControls();
+    void UpdateVersionLabel();
     void SaveSettings();
     void UpdateProviderVisibility();
     void ApplyTrialApiKey();
@@ -48,6 +51,9 @@ private:
     HWND llm_base_url_edit_ = nullptr;
     HWND llm_api_key_edit_ = nullptr;
     HWND llm_model_edit_ = nullptr;
+    HWND sleep_timeout_edit_ = nullptr;
+    HWND version_label_ = nullptr;
+    std::map<std::string, std::string> firmware_versions_;
     HWND debug_audio_check_ = nullptr;
     HWND side_button_send_check_ = nullptr;
     HWND debug_dir_edit_ = nullptr;
@@ -63,7 +69,7 @@ private:
     std::vector<HWND> label_controls_;
 
     static constexpr int kClientWidth = 640;
-    static constexpr int kClientHeight = 590;
+    static constexpr int kClientHeight = 650;
     static constexpr UINT kIdProviderCombo = 2001;
     static constexpr UINT kIdApiKeyEdit = 2002;
     static constexpr UINT kIdResourceCombo = 2003;
@@ -78,6 +84,7 @@ private:
     static constexpr UINT kIdCancel = 2012;
     static constexpr UINT kIdApplyTrialApiKey = 2013;
     static constexpr UINT kIdSideButtonSend = 2014;
+    static constexpr UINT kIdSleepTimeout = 2018;
 };
 
 } // namespace voicestick
