@@ -36,6 +36,17 @@ int main() {
     d.Load(b);
     voicestick::ButtonBindings result;
     assert(d.Collect(result) && result == b);
+    b.actions[4] = "script:Ctrl+A; Wait:100; Ctrl+C";
+    d.Load(b);
+    assert(d.Collect(result) && result == b);
+    assert(IsWindowEnabled(d.keys[4]));
+    assert(GetWindowLongW(d.keys[4], GWL_STYLE) & ES_READONLY);
+    assert(voicestick::Read(GetDlgItem(d.hwnd, 204)) == "编辑…");
+    // Loading a preset cancels shortcut recording before it can consume script edits.
+    d.recording_row = 1;
+    d.Load(b);
+    assert(d.recording_row == -1);
+    assert(d.Collect(result) && result == b);
     DestroyWindow(d.hwnd);
     DeleteObject(d.font);
 }

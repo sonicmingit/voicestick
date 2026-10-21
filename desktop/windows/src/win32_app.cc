@@ -36,6 +36,9 @@ constexpr UINT kMenuAutoEnter = 1011;
 constexpr UINT kMenuOutputFocusedApp = 1012;
 constexpr UINT kMenuOutputSubtitle = 1013;
 constexpr UINT kMenuSideButtonSend = 1014;
+constexpr UINT kMenuProviderCloud = 1015;
+constexpr UINT kMenuProviderVolcengine = 1016;
+constexpr UINT kMenuProviderDoubao = 1017;
 constexpr UINT kMenuForgetBase = 2100;
 constexpr UINT kMenuForgetEnd = 2199;
 constexpr UINT kMenuUpdateFirmwareBase = 2200;
@@ -475,6 +478,9 @@ LRESULT Win32App::HandleMessage(UINT message, WPARAM w_param, LPARAM l_param) {
         }
     }
     switch (message) {
+    case WM_TIMER:
+        if (w_param == InputInjectorWin::kScriptTimer) { input_injector_.HandleScriptTimer(); return 0; }
+        return DefWindowProcW(hwnd_, message, w_param, l_param);
     case WM_COMMAND:
         switch (LOWORD(w_param)) {
         case kMenuRestore:
@@ -503,6 +509,15 @@ LRESULT Win32App::HandleMessage(UINT message, WPARAM w_param, LPARAM l_param) {
         case kMenuSideButtonSend:
             config_.side_button_send = !config_.side_button_send;
             SaveInputOptions();
+            return 0;
+        case kMenuProviderCloud:
+            SwitchAsrProvider(AsrProvider::kVoiceStickCloud);
+            return 0;
+        case kMenuProviderVolcengine:
+            SwitchAsrProvider(AsrProvider::kVolcengine);
+            return 0;
+        case kMenuProviderDoubao:
+            SwitchAsrProvider(AsrProvider::kDoubaoIme);
             return 0;
         case kMenuOutputFocusedApp:
             config_.default_output_profile.target = OutputTarget::kFocusedApp;
@@ -666,6 +681,14 @@ void Win32App::ShowTrayMenu() {
     AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, client_version.c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     if (has_recoverable_input_) AppendMenuW(menu, MF_STRING, kMenuRestore, L"恢复上次输入");
+    HMENU provider_menu = CreatePopupMenu();
+    AppendMenuW(provider_menu, MF_STRING | (config_.asr_provider == AsrProvider::kDoubaoIme ? MF_CHECKED : 0), kMenuProviderDoubao, L"豆包输入法（测试）");
+    AppendMenuW(provider_menu, MF_STRING | (config_.asr_provider == AsrProvider::kVolcengine ? MF_CHECKED : 0), kMenuProviderVolcengine, L"火山引擎 API");
+    AppendMenuW(provider_menu, MF_STRING | (config_.asr_provider == AsrProvider::kVoiceStickCloud ? MF_CHECKED : 0), kMenuProviderCloud, L"VoiceStick Cloud API");
+    const wchar_t* provider_name = config_.asr_provider == AsrProvider::kDoubaoIme ? L"豆包输入法（测试）" :
+        config_.asr_provider == AsrProvider::kVolcengine ? L"火山引擎 API" : L"VoiceStick Cloud API";
+    const std::wstring provider_title = std::wstring(L"识别服务：") + provider_name;
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(provider_menu), provider_title.c_str());
     AppendMenuW(menu, MF_STRING, kMenuPairScan, L"配对设备…");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
@@ -843,6 +866,37 @@ void Win32App::ShowTrayMenu() {
     SetForegroundWindow(hwnd_);
     TrackPopupMenu(menu, TPM_RIGHTBUTTON, point.x, point.y, 0, hwnd_, nullptr);
     DestroyMenu(menu);
+}
+
+void Win32App::SwitchAsrProvider(AsrProvider provider) {
+    if (provider == config_.asr_provider) return;
+    auto draft = config_;
+    draft.asr_provider = provider;
+    if (provider == AsrProvider::kDoubaoIme) {
+        auto endpoints = ListImeAudioEndpoints();
+        if (draft.ime_audio_endpoint.empty() || std::none_of(endpoints.begin(), endpoints.end(), [&](const auto& endpoint) { return endpoint.id == draft.ime_audio_endpoint; })) {
+            MessageBoxW(hwnd_, L"请先在设置中为豆包输入法选择可用的 VB-CABLE 音频通道。", L"识别服务", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+        auto supported = [](const OutputProfile& profile) { return profile.target == OutputTarget::kFocusedApp && profile.transform == TextTransform::kOriginal; };
+        if (!supported(draft.default_output_profile) || std::any_of(draft.paired_device_ids.begin(), draft.paired_device_ids.end(), [&](const auto& id) { return !supported(draft.OutputProfileForDevice(id)); })) {
+            MessageBoxW(hwnd_, L"豆包输入法需要原文输入。请先将全局及设备输出设为当前输入框、原文，再切换。", L"识别服务", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+    } else if (draft.ActiveApiKey().empty()) {
+        MessageBoxW(hwnd_, L"请先在设置中填写该识别服务的 API Key，再使用快速切换。", L"识别服务", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    try {
+        draft.Save();
+        config_ = std::move(draft);
+        if (coordinator_) coordinator_->UpdateConfig(config_);
+        SetStatus("识别服务已切换：" + std::string(provider == AsrProvider::kDoubaoIme ? "豆包输入法（测试）" : provider == AsrProvider::kVolcengine ? "火山引擎 API" : "VoiceStick Cloud API"));
+        LogLine("ASR provider switched to " + AsrProviderName(provider));
+    } catch (const std::exception& error) {
+        LogLine(std::string("ASR provider switch failed: ") + error.what());
+        MessageBoxW(hwnd_, L"识别服务切换失败，请检查配置文件是否可写。", L"识别服务", MB_OK | MB_ICONERROR);
+    }
 }
 
 void Win32App::SaveInputOptions() {

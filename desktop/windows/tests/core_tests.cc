@@ -206,6 +206,14 @@ public:
     }
 
     bool SendShortcut(const Shortcut& s) override { shortcuts.push_back(FormatShortcut(s)); return true; }
+    bool StartScript(const ButtonScript& script, std::function<void(bool)> completion) override {
+        scripts.push_back(script); script_running = true; script_completion = std::move(completion); return true;
+    }
+    bool IsScriptRunning() const override { return script_running; }
+    void CancelScript() override { script_running = false; script_completion = {}; }
+    bool script_running = false;
+    std::function<void(bool)> script_completion;
+    std::vector<ButtonScript> scripts;
     std::vector<std::string> shortcuts;
     bool paste_result = true;
     bool send_result = true;
@@ -1013,6 +1021,23 @@ void TestButtonBindings() {
     for (auto text : {"", "Ctrl", "Ctrl+", "Ctrl+Ctrl+V", "Ctrl+V+Z", "F25", "Ctrl+Unknown"}) assert(!ParseShortcut(text));
     b.actions[0] = "hold_record"; assert(!b.Validate().empty());
     b = {}; b.actions[4] = "shortcut:Ctrl+Shift+Z"; assert(b.Validate().empty());
+    auto script = ParseButtonScript(" \tctrl+a\r\nWait: 100\n\nCTRL+c; ");
+    assert(script && script->size() == 3);
+    assert(FormatButtonScript(*script) == "Ctrl+A; Wait:100; Ctrl+C");
+    assert(ParseButtonScript(FormatButtonScript(*script)) == script);
+    assert(ParseButtonScript("Wait:5000; Ctrl+A; Wait:5000; Ctrl+C"));
+    for (auto text : {"", " ; \r\n", "Wait:100", "Ctrl+A; Wait:0; Ctrl+C", "Ctrl+A; Wait:-1", "Ctrl+A; Wait:5001",
+                      "Ctrl+A; Wait:5000; Wait:5000; Wait:1", "Ctrl+A; Wait:100ms", "Ctrl+A; Wait:9999999999999999999999",
+                      "Ctrl+A; unknown", "powershell.exe", "Ctrl+A; Ctrl+"}) assert(!ParseButtonScript(text));
+    std::string long_script;
+    for (int i = 0; i < 32; ++i) long_script += "Ctrl+A;";
+    assert(ParseButtonScript(long_script));
+    assert(!ParseButtonScript(long_script + "Ctrl+C"));
+    assert(!ParseButtonScript(std::string(4097, ' ')+"Ctrl+A"));
+    b.actions[3] = "script:Ctrl+A; Wait:100; Ctrl+C"; assert(b.Validate().empty());
+    b.actions[3] = "script:"; assert(!b.Validate().empty());
+    b.actions[3] = "script"; assert(!b.Validate().empty());
+    b.actions[3] = "script:Ctrl+A; Ctrl+C";
     auto payload = b.FirmwarePayload(9);
     assert(payload.find("\"rev\":9") != std::string::npos && payload.size() < 192);
     b.long_press_ms = 100; assert(!b.Validate().empty());
@@ -1022,6 +1047,7 @@ void TestButtonBindings() {
     const auto path = dir / "config.toml";
     auto config = AppConfig::Defaults();
     config.buttons.actions[0] = "shortcut:Ctrl+Shift+V";
+    config.buttons.actions[4] = "script:Ctrl+A\r\nWait:100\r\nCtrl+C";
     config.buttons.long_press_ms = 800;
     config.button_presets["编辑 · 方案一"] = config.buttons;
     config.Save(path);
@@ -1095,7 +1121,25 @@ void TestCoordinatorCustomButtons() {
     gesture("button_gesture", 5, 0, 3);
     assert(ap->cancelled);
     ap->on_final("cancelled text"); assert(input.paste_count == 3);
+    config.buttons.actions[3] = "script:Ctrl+A; Wait:100; Ctrl+C";
+    c.UpdateConfig(config);
+    ack.revision = 4; bp->on_state_event("5A74", ack);
+    gesture("button_gesture", 3, 0, 4);
+    assert(input.IsScriptRunning() && input.scripts.size() == 1);
+    assert(FormatButtonScript(input.scripts.back()) == "Ctrl+A; Wait:100; Ctrl+C");
+    gesture("button_gesture", 3, 0, 4); gesture("button_gesture", 0, 0, 4);
+    assert(input.scripts.size() == 1 && input.enter_count == 1); // No overlapping scripts or confirmation.
+    gesture("record_start", 2, 103, 4);
+    assert(!input.IsScriptRunning());
+    gesture("button_gesture", 3, 0, 4); assert(input.scripts.size() == 1); // Busy recording.
+    gesture("button_gesture", 5, 0, 4);
+    gesture("button_gesture", 3, 0, 4); assert(input.IsScriptRunning());
+    gesture("button_gesture", 5, 0, 4); assert(!input.IsScriptRunning());
+    gesture("button_gesture", 3, 0, 4); assert(input.IsScriptRunning());
+    bp->on_connection_change({}); assert(!input.IsScriptRunning());
+    gesture("button_gesture", 3, 0, 4); assert(input.IsScriptRunning());
     config.buttons.enabled = false; c.UpdateConfig(config);
+    assert(!input.IsScriptRunning());
     assert(bp->button_controls.back().second == "{\"event\":\"buttons_off\"}");
     gesture("button_gesture", 3, 0, 3); assert(input.shortcuts.size() == 5);
 }
@@ -1184,6 +1228,58 @@ void TestDoubaoVoiceLifecycle() {
     assert(m->begins == 2); // Reconnect must negotiate HID capability again.
 }
 
+void TestRecognitionProviderSwitch() {
+    auto config = AppConfig::Defaults();
+    config.buttons.enabled = false;
+    config.asr_provider = AsrProvider::kDoubaoIme;
+    config.volcengine_api_key = "test-volcengine";
+    config.voicestick_api_key = "test-cloud";
+    config.ime_audio_endpoint = "saved-cable";
+    auto ble = std::make_unique<FakeBleCentral>(); auto* b = ble.get();
+    b->connected_device_ids.insert("5A74");
+    auto ime = std::make_unique<FakeImeVoice>(); auto* m = ime.get();
+    FakeUi ui; FakeInputInjector input;
+    FakeAsrClient* current_asr = nullptr;
+    std::vector<AsrProvider> providers;
+    auto factory = [&](const AppConfig& selected) -> std::unique_ptr<AsrClient> {
+        providers.push_back(selected.asr_provider);
+        assert(selected.volcengine_api_key == "test-volcengine" && selected.voicestick_api_key == "test-cloud");
+        assert(selected.ime_audio_endpoint == "saved-cable");
+        auto asr = std::make_unique<FakeAsrClient>(); current_asr = asr.get();
+        return asr;
+    };
+    auto asr = factory(config);
+    VoiceStickCoordinator c(config, std::move(ble), std::move(asr), &ui, &input, factory, std::move(ime));
+    c.Start();
+    StateEvent info; info.event = "device_info"; info.hid_voice = 1;
+    b->on_state_event("5A74", info);
+    b->on_state_event("5A74", ButtonEvent("button_down", "primary", 1));
+    assert(m->begins == 1);
+    int cancels = m->cancels;
+    config.asr_provider = AsrProvider::kVolcengine;
+    c.UpdateConfig(config);
+    assert(m->cancels > cancels && providers.back() == AsrProvider::kVolcengine);
+    assert(b->button_controls.back().second == "{\"event\":\"record_cancel\"}");
+    m->on_complete("5A74", 1, "late IME failure");
+    b->on_state_event("5A74", ButtonEvent("button_down", "primary", 2));
+    std::this_thread::sleep_for(std::chrono::milliseconds(520));
+    b->on_audio_frame("5A74", AudioDataFrame(2, 0));
+    assert(current_asr->started && m->begins == 1);
+    cancels = m->cancels;
+    config.asr_provider = AsrProvider::kDoubaoIme;
+    c.UpdateConfig(config);
+    assert(m->cancels > cancels);
+    b->on_state_event("5A74", ButtonEvent("button_down", "primary", 3));
+    assert(m->begins == 2 && !current_asr->started && input.paste_count == 0);
+    config.asr_provider = AsrProvider::kVoiceStickCloud;
+    c.UpdateConfig(config);
+    b->on_state_event("5A74", ButtonEvent("button_down", "primary", 4));
+    std::this_thread::sleep_for(std::chrono::milliseconds(520));
+    b->on_audio_frame("5A74", AudioDataFrame(4, 0));
+    assert(current_asr->started && providers.back() == AsrProvider::kVoiceStickCloud);
+    assert(input.paste_count == 0);
+}
+
 void TestSleepTimeoutSettings() {
     assert(AppConfig::Defaults().sleep_timeout_minutes == 5);
     const auto path = std::filesystem::temp_directory_path() /
@@ -1232,6 +1328,7 @@ void TestSleepTimeoutSettings() {
 }
 
 int main() {
+    TestRecognitionProviderSwitch();
     TestSleepTimeoutSettings();
     TestDoubaoVoiceLifecycle();
     TestButtonGestures();

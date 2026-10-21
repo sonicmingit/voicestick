@@ -314,7 +314,7 @@ struct ImeVoiceWin::Impl {
         }
         if (now - last_renew > std::chrono::milliseconds(500)) { Key(true); last_renew = now; }
         if (!key_ready && now - started > std::chrono::seconds(2))
-            throw std::runtime_error("设备语音键未就绪，请在 Windows 蓝牙设置中配对新版设备");
+            throw std::runtime_error("设备蓝牙键盘通道未就绪，请检查 Windows 中的 VS 设备键盘连接；已配对时请重新连接设备后重试");
         if (key_ready && !mic_ready) {
             mic_ready = IsDoubaoVoiceWindowVisible();
             if (mic_ready) LogApp("ime_voice phase=microphone_ready");
@@ -360,7 +360,7 @@ struct ImeVoiceWin::Impl {
                     else if (active && message.kind == Message::End) finishing = true;
                     else if (active && message.kind == Message::State && message.device == device &&
                              message.state.session_id == session && message.state.event == "voice_key") {
-                        if (message.state.key_ok != 1) throw std::runtime_error("蓝牙键盘尚未就绪，请完成设备配对后重试");
+                        if (message.state.key_ok != 1) throw std::runtime_error("设备未能按下语音快捷键，请检查蓝牙键盘连接；已配对时请重新连接设备后重试");
                         if (message.state.key_down == 1) key_ready = true;
                         else if (awaiting_up) Close(true);
                         else throw std::runtime_error("设备提前释放了语音键，本次录音已停止");

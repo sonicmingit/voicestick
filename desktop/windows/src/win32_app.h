@@ -69,6 +69,7 @@ private:
     void ShowSettings();
     void UpdateSettingsVersions();
     void SaveInputOptions();
+    void SwitchAsrProvider(AsrProvider provider);
     void SaveDeviceThemeColor(const std::string& device_id, OverlayThemeColor color);
     void SaveDeviceOverlayPosition(const std::string& device_id, OverlayPosition position);
     void SaveDeviceOutputProfile(const std::string& device_id, OutputProfile profile);

@@ -21,6 +21,16 @@ std::optional<Shortcut> ParseShortcut(std::string_view text);
 std::string FormatShortcut(const Shortcut& shortcut);
 std::optional<Shortcut> ShortcutForAction(std::string_view action);
 
+// A script contains shortcuts and explicit waits, separated by lines or semicolons.
+struct ButtonScriptStep {
+    std::optional<Shortcut> shortcut;
+    int wait_ms = 0;
+    bool operator==(const ButtonScriptStep&) const = default;
+};
+using ButtonScript = std::vector<ButtonScriptStep>;
+std::optional<ButtonScript> ParseButtonScript(std::string_view text);
+std::string FormatButtonScript(const ButtonScript& script);
+
 struct ButtonBindings {
     bool enabled = true;
     int long_press_ms = 500;

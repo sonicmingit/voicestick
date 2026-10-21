@@ -2,7 +2,9 @@
 
 Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝牙按键语音输入设备。
 
-**Windows 0.4.2 支持豆包输入法（测试）**：设备通过蓝牙 HID 唤起豆包，麦克风声音经 VB-CABLE 交给豆包识别并填入当前输入框，无需 ASR API Key。首次使用请按 [豆包输入法使用说明](docs/豆包输入法使用说明.md) 安装驱动、完成 Windows 配对并配置音频通道与快捷键。新版同时修复客户端删除系统配对、配对后重启客户端导致长按录音失效的问题，原有 API 模式继续可用。[下载客户端、固件及 VB-CABLE 驱动包](https://github.com/sonicmingit/voicestick/releases/tag/windows-v0.4.2)。
+**Windows 0.4.3 新增按键脚本与识别服务快速切换**：六个手势可绑定连续快捷键与等待，例如 `Ctrl+A; Wait:100; Ctrl+C` 实现全选后复制。托盘第一层的“识别服务”菜单可切换豆包输入法、火山引擎 API 与 VoiceStick Cloud，沿用已保存的配置。新版补充音频通知重新初始化，并修正蓝牙键盘未就绪时的误导提示。[下载客户端、固件及 VB-CABLE 驱动包](https://github.com/sonicmingit/voicestick/releases/tag/windows-v0.4.3)。
+
+豆包输入法仍标记为测试：设备通过蓝牙 HID 唤起豆包，麦克风声音经 VB-CABLE 交给豆包识别并填入当前输入框，无需 ASR API Key。首次使用请按 [豆包输入法使用说明](docs/豆包输入法使用说明.md) 安装驱动、完成 Windows 配对并配置音频通道与快捷键。原有 API 模式继续可用。
 
 **Windows 0.4.0 + 配套固件支持自定义按键**：主键／侧键各自可设置单击、双击、长按，默认主键单击发送、长按录音，侧键单击撤销、双击重做、长按粘贴。入口为「设置 → 按键与快捷键…」，详见 [自定义按键使用说明](docs/自定义按键使用说明.md)。以下侧键发送说明适用于旧固件或关闭自定义按键后的兼容模式。
 
@@ -17,7 +19,7 @@ Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝
 - `desktop/windows/`：Windows 桌面应用工作目录。
 - `desktop/linux/`：使用 GTK4 / libadwaita 的 Linux 桌面应用。
 - [通信协议](docs/通信协议.md)：StickS3 与 macOS 之间的 BLE 协议。
-- [自定义按键使用说明](docs/自定义按键使用说明.md)：Windows 0.4.0 六个手势、快捷键录制、预设和固件升级。
+- [自定义按键使用说明](docs/自定义按键使用说明.md)：六个手势、快捷键录制、连续脚本、预设和固件升级。
 - [豆包输入法接入测试](docs/豆包输入法接入测试.md)：开发分支的虚拟麦克风、语音快捷键与配套 BLE HID 固件。
 - [豆包输入法使用说明](docs/豆包输入法使用说明.md)：Windows 安装、VB-CABLE、系统配对、豆包配置、长按输入与故障排查。
 - [开发日志](docs/开发日志.md)：功能迭代、构建验证、硬件刷写和用户实测记录。
@@ -35,6 +37,7 @@ Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝
 - 固件从 ES8311 麦克风读取 16 kHz 单声道 PCM，编码为 Opus 后通过 BLE 通知发送。
 - macOS 应用将收到的 Opus 数据封装为 Ogg Opus，通过 WebSocket 转发给 ASR。
 - ASR 支持直接接入火山引擎，或通过 VoiceStick Cloud 中转。
+- Windows 0.4.3 支持快捷键脚本及等待步骤，提供全选后复制示例；托盘第一层可快速切换识别服务，保留各服务已有配置。
 - Windows 0.4.2 增加豆包输入法（测试）模式：VoiceStick 选择 CABLE Input 播放端，豆包麦克风选择 CABLE Output 录制端；通过已配对设备的 HID 键盘触发一致的语音快捷键。
 - 识别过程中，macOS 应用显示悬浮窗和菜单栏状态。松开按键后，固件屏幕保持思考状态，直到文字被粘贴或取消。
 - macOS 和 Linux 的最终文字进入 1.2 秒确认倒计时；期间按正面按键可暂停自动粘贴，再按一次确认粘贴，按侧键则取消。空闲时按侧键可恢复上一次仍可恢复的输入确认。

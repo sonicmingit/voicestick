@@ -127,6 +127,9 @@ public:
     virtual bool Paste(const std::string& text, bool press_enter) = 0;
     virtual bool SendEnter() = 0;
     virtual bool SendShortcut(const Shortcut& shortcut) { return false; }
+    virtual bool StartScript(const ButtonScript& script, std::function<void(bool)> completion) { return false; }
+    virtual bool IsScriptRunning() const { return false; }
+    virtual void CancelScript() {}
 };
 
 class VoiceStickCoordinator {

@@ -73,6 +73,7 @@ void VoiceStickCoordinator::Start() {
     };
     ble_->on_connection_change = [this](std::vector<ConnectedDevice> devices) {
         if (is_shutdown_) return;
+        input_injector_->CancelScript();
         ui_->SetConnectedDevices(devices);
         CancelActiveCycleIfDeviceDisconnected();
         for (auto it = hid_voice_devices_.begin(); it != hid_voice_devices_.end();)
@@ -124,6 +125,7 @@ void VoiceStickCoordinator::Start() {
 void VoiceStickCoordinator::Shutdown() {
     if (is_shutdown_) return;
     is_shutdown_ = true;
+    input_injector_->CancelScript();
     if (ime_voice_) { ime_voice_->on_complete = {}; ime_voice_->Cancel(); }
     pending_send_device_id_.reset();
     ble_->on_connection_change = nullptr;
@@ -149,11 +151,15 @@ void VoiceStickCoordinator::Shutdown() {
 }
 
 void VoiceStickCoordinator::UpdateConfig(AppConfig config) {
+    input_injector_->CancelScript();
     if (pending_send_device_id_) ui_->SetStatus("Ready");
     pending_send_device_id_.reset();
-    const bool was_recognizing = asr_started_ || active_session_id_.has_value() ||
+    const bool was_recognizing = config.asr_provider != config_.asr_provider || asr_started_ || active_session_id_.has_value() ||
                                  !pending_paste_state_.IsIdle() || !subtitle_cycles_.empty();
     if (was_recognizing) {
+        if (active_device_id_) ble_->SendButtonControl("{\"event\":\"record_cancel\"}", *active_device_id_);
+        for (const auto& [device, _] : active_subtitle_sessions_)
+            ble_->SendButtonControl("{\"event\":\"record_cancel\"}", device);
         asr_->Cancel();
         for (auto& [_, cycle] : subtitle_cycles_) {
             if (cycle->asr) cycle->asr->Cancel();
@@ -422,6 +428,7 @@ void VoiceStickCoordinator::HandleGesture(const StateEvent& event, const std::st
         return;
     }
     if (action == "cancel") {
+        input_injector_->CancelScript();
         if (pending_send_device_id_ == device_id) pending_send_device_id_.reset();
         ble_->SendButtonControl("{\"event\":\"record_cancel\"}", device_id);
         if (active_device_id_ == device_id) {
@@ -437,6 +444,7 @@ void VoiceStickCoordinator::HandleGesture(const StateEvent& event, const std::st
         return;
     }
     if (session_state_ != SessionState::kReady || !pending_paste_state_.IsIdle() || !subtitle_cycles_.empty()) return;
+    if (input_injector_->IsScriptRunning()) return;
     if (action == "confirm_send") {
         if (config_.asr_provider == AsrProvider::kDoubaoIme) {
             // Doubao owns the text; there is no VoiceStick paste token in this mode.
@@ -452,6 +460,13 @@ void VoiceStickCoordinator::HandleGesture(const StateEvent& event, const std::st
             active_device_id_ = device_id;
             CompletePendingPaste(*last_recoverable_text_);
         }
+    } else if (action.starts_with("script:")) {
+        auto script = ParseButtonScript(std::string_view(action).substr(7));
+        // Even a partially completed script may change the text or selection.
+        pending_send_device_id_.reset();
+        if (!script || !input_injector_->StartScript(*script, [this](bool ok) {
+                ui_->SetStatus(ok ? "脚本已完成" : "脚本已停止：请保持原窗口，并检查修饰键和目标窗口权限");
+            })) ui_->SetStatus("脚本未执行，请松开键盘修饰键并检查目标窗口");
     } else if (auto shortcut = ShortcutForAction(action)) {
         if (input_injector_->SendShortcut(*shortcut)) {
             // Editing can invalidate the text that was armed for confirmation.
@@ -536,6 +551,7 @@ void VoiceStickCoordinator::HandleSecondaryButtonClick(const std::string& device
 
 void VoiceStickCoordinator::HandlePrimaryButtonDown(std::optional<std::uint32_t> session_id,
                                                        const std::string& device_id) {
+    input_injector_->CancelScript();
     if (config_.asr_provider == AsrProvider::kDoubaoIme) {
         if (session_state_ != SessionState::kReady || active_device_id_ || !session_id || *session_id == 0) return;
         const auto profile = OutputProfileForDevice(device_id);

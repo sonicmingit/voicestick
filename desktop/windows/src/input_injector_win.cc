@@ -4,6 +4,54 @@
 
 namespace voicestick {
 
+bool InputInjectorWin::ScriptModifiersReleased() const {
+    for (int key : {VK_CONTROL, VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN})
+        if (GetAsyncKeyState(key) & 0x8000) return false;
+    return true;
+}
+
+bool InputInjectorWin::StartScript(const ButtonScript& script, std::function<void(bool)> completion) {
+    if (IsScriptRunning() || !IsWindow(clipboard_owner_)) return false;
+    const auto parsed = ParseButtonScript(FormatButtonScript(script));
+    if (!parsed || *parsed != script) return false;
+    auto target = ScriptForegroundWindow();
+    if (!target || target == clipboard_owner_) return false;
+    if (!ScriptModifiersReleased()) return false;
+    if (!SetTimer(clipboard_owner_, kScriptTimer, 25, nullptr)) return false;
+    script_ = script;
+    script_target_ = target;
+    script_index_ = 0;
+    script_due_ = GetTickCount64();
+    script_completion_ = std::move(completion);
+    return true;
+}
+
+void InputInjectorWin::CancelScript() {
+    if (clipboard_owner_) KillTimer(clipboard_owner_, kScriptTimer);
+    script_.clear();
+    script_index_ = 0;
+    script_target_ = nullptr;
+    script_completion_ = {};
+}
+
+void InputInjectorWin::HandleScriptTimer() {
+    if (!IsScriptRunning()) return;
+    auto finish = [this](bool ok) {
+        auto completion = std::move(script_completion_);
+        CancelScript();
+        if (completion) completion(ok);
+    };
+    if (!IsWindow(script_target_) || ScriptForegroundWindow() != script_target_ || !ScriptModifiersReleased()) { finish(false); return; }
+    if (GetTickCount64() < script_due_) return;
+    if (script_index_ == script_.size()) { finish(true); return; }
+    const auto step = script_[script_index_++];
+    if (step.shortcut) {
+        if (!SendShortcut(*step.shortcut)) { finish(false); return; }
+        // Yield to the target application's message loop between shortcuts.
+        script_due_ = GetTickCount64() + 25;
+    } else script_due_ = GetTickCount64() + step.wait_ms;
+}
+
 bool InputInjectorWin::Paste(const std::string& text, bool press_enter) {
     last_paste_window_ = nullptr;
     if (text.empty()) return false;

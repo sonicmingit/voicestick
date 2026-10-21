@@ -80,6 +80,9 @@ std::string TomlEscape(std::string_view value) {
     std::string out;
     out.reserve(value.size());
     for (char ch : value) {
+        if (ch == '\r') { out += "\\r"; continue; }
+        if (ch == '\n') { out += "\\n"; continue; }
+        if (ch == '\t') { out += "\\t"; continue; }
         if (ch == '\\' || ch == '"') out.push_back('\\');
         out.push_back(ch);
     }

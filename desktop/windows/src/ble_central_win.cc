@@ -991,6 +991,19 @@ winrt::fire_and_forget BleCentralWin::ConnectDeviceAsync(std::uint64_t bluetooth
         co_await WaitMs(std::chrono::milliseconds(250));
 
         LogBleLine("subscribing audio notifications VS-" + device_id);
+        // The HID driver can keep the bonded link alive after the client exits.
+        // Renew audio as well as state: a cached Notify write alone can leave
+        // the firmware's audio subscription flag false, gating recording while
+        // button gestures still arrive on the independently renewed state path.
+        auto audio_reset = co_await session->audio_characteristic
+            .WriteClientCharacteristicConfigurationDescriptorAsync(
+                GattClientCharacteristicConfigurationDescriptorValue::None);
+        LogBleLine("audio subscription reset VS-" + device_id +
+                   " status=" + GattStatusName(audio_reset));
+        if (audio_reset != GattCommunicationStatus::Success) {
+            fail("audio notification reset failed: " + GattStatusName(audio_reset));
+            co_return;
+        }
         auto audio_subscribe = co_await session->audio_characteristic
             .WriteClientCharacteristicConfigurationDescriptorAsync(
                 GattClientCharacteristicConfigurationDescriptorValue::Notify);
