@@ -26,3 +26,6 @@ docs/cat.png
 docs/app_icon/
 dependencies.lock
 /tmp/
+
+# Local standalone development checkout; distributable source is under desktop/windows-s3.
+/sticks3-sayall/

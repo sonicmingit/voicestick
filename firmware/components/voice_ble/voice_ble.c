@@ -945,6 +945,14 @@ esp_err_t voice_ble_send_device_info(void)
     return send_state_json(json);
 }
 
+esp_err_t voice_ble_send_battery(int level)
+{
+    if (level < 0 || level > 100) return ESP_ERR_INVALID_ARG;
+    char json[64];
+    snprintf(json, sizeof(json), "{\"event\":\"battery\",\"level\":%d}", level);
+    return send_state_json(json);
+}
+
 esp_err_t voice_ble_send_buttons_ready(uint32_t revision)
 {
     char json[80];

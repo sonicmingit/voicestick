@@ -12,11 +12,32 @@ Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝
 
 侧面按键位于 StickS3 侧边（GPIO12，协议角色为 `secondary`）。macOS 和 Linux 用它取消识别或待确认文字；空闲时可恢复上一次仍可恢复的输入确认。Windows 0.4.0 可分别配置侧键的单击、双击、长按；旧固件或关闭自定义按键时，使用原有的 [侧键确认发送](desktop/windows/Windows使用说明.md#侧键确认) 模式。
 
+## VoiceStick S3 Windows 实验版（SayAll 界面移植）
+
+[下载 VoiceStick S3 Windows 实验版](https://github.com/sonicmingit/voicestick/releases/tag/sticks3-windows-v0.1.0-preview.1)（Windows x64 便携包）。
+
+这是针对 StickS3 的独立 Windows x64 客户端，参考并改编 [无线麦 SayAll Windows 开源项目](https://github.com/GetSayAll/remote-mic-app-windows)，不属于 SayAll 官方发行版。源码位于 [`desktop/windows-s3/`](desktop/windows-s3/)，与原 Windows 客户端并存；上游提交及改编范围见 [来源与归属](desktop/windows-s3/ATTRIBUTION.md)。
+
+- 复用 StickS3 已有的蓝牙语音及双按键固件，两枚按键均可配置单击、双击和长按动作。
+- 支持火山豆包 API 流式识别、实时文字浮窗、浮窗位置、自动输入，以及先复制到剪贴板再输入。火山 API 模式无需 VB-CABLE；音频会发送到用户配置的火山账户。
+- 保留豆包输入法、微信输入法和其他工具入口。这些模式可能需要 VB-CABLE；豆包输入法的设备 HID 通道在测试设备上曾失败，不作为已验证功能。
+- 设备屏幕可显示电量；电脑端电量上报的配套固件尚未真机验证，旧固件可能显示“电量未知”。无需为使用火山 API 刷写新固件。
+- 使用前在 Windows 配对 StickS3，退出其他占用设备的客户端；然后在“连接”页配置 API Key 和资源，详见 [客户端说明](desktop/windows-s3/STICKS3-README.md)。本版为实验性移植，长时间运行及断连恢复仍需更多真机验证。
+
+| 双按键映射 | 连接与语音设置 |
+| --- | --- |
+| ![双按键映射](docs/images/sticks3-buttons.png) | ![连接与语音设置](docs/images/sticks3-connection.png) |
+
+### 版权与许可证
+
+本仓库原 VoiceStick 项目保留 [MIT License](LICENSE) 及原版权声明。`desktop/windows-s3/` 基于 [GetSayAll/remote-mic-app-windows](https://github.com/GetSayAll/remote-mic-app-windows)，该目录及其派生代码按 [GPL-3.0-only](desktop/windows-s3/LICENSE) 发布；保留上游版权、[第三方许可](desktop/windows-s3/THIRD_PARTY_NOTICES.md)及 [来源说明](desktop/windows-s3/ATTRIBUTION.md)。原作者和商标权利归各自权利人所有；本项目与 SayAll 官方无隶属关系。
+
 ## 项目结构
 
 - `firmware/`：M5Stack StickS3 / ESP32-S3 的 ESP-IDF 固件。
 - `desktop/macos/`：原生 macOS 菜单栏应用的 Swift 包。
-- `desktop/windows/`：Windows 桌面应用工作目录。
+- `desktop/windows/`：原 Windows 桌面应用工作目录。
+- `desktop/windows-s3/`：基于 SayAll Windows 的 StickS3 实验客户端（GPL-3.0-only）。
 - `desktop/linux/`：使用 GTK4 / libadwaita 的 Linux 桌面应用。
 - [通信协议](docs/通信协议.md)：StickS3 与 macOS 之间的 BLE 协议。
 - [自定义按键使用说明](docs/自定义按键使用说明.md)：六个手势、快捷键录制、连续脚本、预设和固件升级。

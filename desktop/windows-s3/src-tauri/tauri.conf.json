@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VoiceStick S3",
+  "version": "0.1.0",
+  "identifier": "me.voicestick.sayall.sticks3",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:2430",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist",
+    "beforeBundleCommand": ""
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "VoiceStick S3 · 实验版",
+        "width": 1066.67,
+        "height": 800,
+        "minWidth": 1066.67,
+        "minHeight": 800,
+        "decorations": true,
+        "resizable": true,
+        "center": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "createUpdaterArtifacts": false,
+    "publisher": "VoiceStick",
+    "category": "Productivity",
+    "shortDescription": "StickS3 双按键语音输入实验版",
+    "longDescription": "基于 SayAll 公开源码适配 M5Stack StickS3。",
+    "icon": [
+      "icons/app-icons/faceted-duck-256.png",
+      "icons/app-icons/faceted-duck.ico"
+    ],
+    "windows": {
+      "allowDowngrades": false,
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": true,
+        "installerIcon": "icons/app-icons/faceted-duck.ico",
+        "installerHooks": null,
+        "uninstallerIcon": "icons/app-icons/faceted-duck.ico",
+        "startMenuFolder": "VoiceStick S3"
+      }
+    },
+    "resources": []
+  },
+  "plugins": {}
+}

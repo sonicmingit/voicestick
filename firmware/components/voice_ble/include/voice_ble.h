@@ -45,6 +45,7 @@ esp_err_t voice_ble_send_audio(uint32_t session_id, uint32_t seq, uint8_t flags,
 esp_err_t voice_ble_request_fast_interval(void);
 esp_err_t voice_ble_request_slow_interval(void);
 esp_err_t voice_ble_send_device_info(void);
+esp_err_t voice_ble_send_battery(int level);
 esp_err_t voice_ble_send_gesture(const char *event, int slot, uint32_t session, uint32_t duration, uint32_t revision);
 esp_err_t voice_ble_send_buttons_ready(uint32_t revision);
 esp_err_t voice_ble_set_voice_key(uint32_t session_id, bool down, bool cancel, uint8_t shortcut);

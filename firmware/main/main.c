@@ -581,6 +581,8 @@ static void ble_control_cb(const char *json)
         } else {
             ESP_LOGW(TAG, "ignore invalid sleep timeout (expected 1-1440 whole minutes)");
         }
+    } else if (cJSON_IsString(event) && strcmp(event->valuestring, "battery_request") == 0) {
+        queue_app_event(APP_EVENT_BATTERY_REFRESH);
     } else if (cJSON_IsString(event) && strcmp(event->valuestring, "record_cancel") == 0) {
         queue_app_event(APP_EVENT_RECORD_CANCEL);
     } else if (cJSON_IsString(event) && strcmp(event->valuestring, "ui_state") == 0 &&
@@ -1180,6 +1182,10 @@ static void update_battery_status(void)
         s_battery_charging = charging;
         s_usb_powered = usb_powered;
         ui_status_set_battery(level, charging, usb_powered);
+        if (voice_ble_is_ready() && !s_recording) {
+            esp_err_t send_err = voice_ble_send_battery(level);
+            if (send_err != ESP_OK) ESP_LOGW(TAG, "battery notify failed: %s", esp_err_to_name(send_err));
+        }
         if (external_power_changed) {
             ESP_LOGI(TAG, "power source changed charging=%d usb=%d",
                      charging, usb_powered);

@@ -1,0 +1,34 @@
+/**
+ * 前端功能开关。放独立模块是为了让页面与测试读**同一个**事实来源：
+ * 入口隐藏时，对应的功能用例经 `it.skipIf` 一并挂起，重新放开开关时
+ * 测试自动恢复，不会出现"入口回来了、用例还在 skip"的漂移。
+ */
+
+/**
+ * 连接页「修改快捷键」自定义录入入口。
+ *
+ * 2026-09-28 Andy 决定：该功能有问题，先隐藏入口，后续研究新方案后再放开。
+ * 录入逻辑本身保留（`beginVoiceHotkeyCapture` 一族），「默认」「关闭」两个
+ * 预设按钮不受影响，用户仍可一键回到默认组合或关闭快捷键。
+ */
+export const VOICE_HOTKEY_CUSTOM_CAPTURE_ENABLED = false;
+
+/**
+ * 首次使用向导（Onboarding）激活开关。
+ *
+ * 2026-10-04：步骤①–⑦、staged 事务、attempt 唯一终态与「重新运行向导」入口
+ * 已全部实现；打开开关，供现场验收（遥控器实时语音 + 三种输入工具 + 键盘
+ * 阴性对照）使用。验收通过前本分支不合入 main（main 保持关闭）。
+ */
+// The upstream wizard teaches Xiaomi pairing/Helper setup. This experimental
+// port starts on Connection, whose three setup cards apply to StickS3.
+export const ONBOARDING_WIZARD_ENABLED = false;
+
+/**
+ * 侧边栏「组合动作」页与按键页的组合动作动作分组激活开关。
+ *
+ * 2026-10-15：数据层（P1）、执行器与按键绑定（P2）已落地；页面随 P3 一并
+ * 开发完成后打开。此开关只控制入口显隐，已绑定的组合动作照常执行
+ * （"隐藏入口、保留路径"语义）。
+ */
+export const COMBINATION_ACTIONS_ENABLED = true;
