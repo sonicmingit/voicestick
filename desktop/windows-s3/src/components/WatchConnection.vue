@@ -2,8 +2,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { onMounted, onUnmounted, ref } from "vue";
 
-type Status = { enabled: boolean; online: boolean; serial: string; keys: [number, number] | null; pending: boolean };
-const state = ref<Status>({ enabled: false, online: false, serial: "", keys: null, pending: false });
+type Status = { enabled: boolean; online: boolean; serial: string; keys: [number, number] | null; pending: boolean; ble_enabled: boolean; ble_online: boolean };
+const state = ref<Status>({ enabled: false, online: false, serial: "", keys: null, pending: false, ble_enabled: false, ble_online: false });
 const actions = ["回车", "撤销", "粘贴"];
 const address = ref("");
 const error = ref("");
@@ -27,6 +27,12 @@ async function change(disconnect: boolean) {
       : await invoke<Status>("connect_watch", { address: address.value.trim() });
   } catch (e) { error.value = String(e); }
   finally { busy.value = false; }
+}
+async function toggleBle() {
+  generation++; busy.value=true; error.value="";
+  try { state.value=await invoke<Status>("watch_ble_mode",{enable:!state.value.ble_enabled}); }
+  catch(e){ error.value=String(e); }
+  finally{ busy.value=false; }
 }
 async function setKey(slot: number, event: Event) {
   if (!state.value.keys) return;
@@ -55,6 +61,10 @@ onUnmounted(() => { generation++; clearInterval(timer); });
       <button class="primary-button" :disabled="busy">{{ busy ? "处理中…" : state.enabled ? "重新连接" : "连接手表" }}</button>
       <button v-if="state.enabled" class="secondary-button" type="button" :disabled="busy" @click="change(true)">断开手表</button>
     </form>
+    <div v-if="state.enabled" class="chip-row">
+      <button type="button" class="secondary-button" :disabled="busy" @click="toggleBle">{{ state.ble_enabled ? "关闭蓝牙接收" : "启用蓝牙 BLE（实验）" }}</button>
+      <small v-if="state.ble_enabled">{{ state.ble_online ? "BLE 已连接" : "请在手表顶部设置选择「使用蓝牙 BLE」" }}</small>
+    </div>
     <div v-if="state.keys" class="chip-row">
       <label v-for="(key, i) in state.keys" :key="i">{{ i === 0 ? "左键" : "右键" }}
         <select :value="key" :disabled="busy || state.pending || !state.online" @change="setKey(i, $event)">

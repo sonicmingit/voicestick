@@ -255,13 +255,30 @@ pub struct WatchStatus {
     pub serial: String,
     pub keys: Option<[u8; 2]>,
     pub pending: bool,
+    pub ble_enabled: bool,
+    pub ble_online: bool,
 }
 pub fn status() -> WatchStatus {
+    let ble_enabled = ble_running();
+    let ble_online = ble_enabled
+        && config_path()
+            .ok()
+            .and_then(|p| {
+                std::fs::metadata(p.with_file_name("watch-ble-seen"))
+                    .ok()?
+                    .modified()
+                    .ok()?
+                    .elapsed()
+                    .ok()
+            })
+            .is_some_and(|age| age < Duration::from_secs(15));
     let receiver = RECEIVER.lock().unwrap();
     let keys = KEYS.lock().unwrap();
     match receiver.as_ref() {
         Some(r) => WatchStatus {
             enabled: true,
+            ble_enabled,
+            ble_online,
             keys: keys.reported,
             pending: keys.pending.is_some(),
             serial: r.serial.clone(),
@@ -273,6 +290,8 @@ pub fn status() -> WatchStatus {
         },
         None => WatchStatus {
             enabled: false,
+            ble_enabled,
+            ble_online,
             keys: None,
             pending: false,
             online: false,
@@ -329,6 +348,60 @@ fn bind() -> Result<TcpListener, String> {
     TcpListener::bind(("127.0.0.1", CLIENT_PORT))
         .map_err(|_| "手表接收端口被占用，请稍后重试".to_string())
 }
+static BLE_CHILD: Mutex<Option<std::process::Child>> = Mutex::new(None);
+fn ble_running() -> bool {
+    let mut child = BLE_CHILD.lock().unwrap();
+    if let Some(process) = child.as_mut() {
+        if matches!(process.try_wait(), Ok(None)) {
+            return true;
+        }
+        child.take();
+    }
+    false
+}
+fn launch_ble() -> Result<(), String> {
+    if ble_running() {
+        return Ok(());
+    }
+    let exe = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .with_file_name("VoiceStick-Watch-BLE.exe");
+    if !exe.is_file() {
+        return Err("请使用含蓝牙组件的客户端包".into());
+    }
+    let path = config_path()?.with_file_name("watch-ble-seen");
+    let _ = std::fs::remove_file(path);
+    let process = Command::new(exe)
+        .args(["--parent", &std::process::id().to_string()])
+        .creation_flags(0x08000000)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    *BLE_CHILD.lock().unwrap() = Some(process);
+    Ok(())
+}
+fn stop_ble() {
+    if let Some(mut child) = BLE_CHILD.lock().unwrap().take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+pub fn set_ble(enable: bool) -> Result<WatchStatus, String> {
+    let _setup = SETUP.lock().unwrap();
+    let marker = config_path()?.with_file_name("watch-ble-enabled");
+    if enable {
+        if !status().enabled {
+            return Err("首次使用请先连接手表完成配对".into());
+        }
+        launch_ble()?;
+        std::fs::write(marker, b"1").map_err(|e| e.to_string())?;
+    } else {
+        if marker.exists() {
+            std::fs::remove_file(marker).map_err(|e| e.to_string())?;
+        }
+        stop_ble();
+    }
+    Ok(status())
+}
 pub fn restore() -> Result<(), String> {
     let _setup = SETUP.lock().unwrap();
     let path = config_path()?;
@@ -336,6 +409,9 @@ pub fn restore() -> Result<(), String> {
         let pair = serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
             .map_err(|_| "手表配置异常，请重新连接")?;
         start(bind()?, pair)?;
+        if config_path()?.with_file_name("watch-ble-enabled").exists() {
+            launch_ble()?;
+        }
     }
     Ok(())
 }
@@ -414,12 +490,12 @@ pub fn connect(address: String) -> Result<WatchStatus, String> {
         .split_whitespace()
         .find_map(|v| v.strip_prefix("versionCode=")?.parse::<u32>().ok())
         .unwrap_or(0);
-    if version < 4 {
+    if version < 5 {
         let apk = std::env::current_exe()
             .map_err(|e| e.to_string())?
-            .with_file_name("VoiceStick-Watch-0.1.3.apk");
+            .with_file_name("VoiceStick-Watch-0.1.4.apk");
         if !apk.is_file() {
-            return Err("请将 VoiceStick-Watch-0.1.3.apk 放到客户端同一目录后重试".into());
+            return Err("请将 VoiceStick-Watch-0.1.4.apk 放到客户端同一目录后重试".into());
         }
         adb(&[
             "-s",
@@ -465,6 +541,8 @@ pub fn disconnect() -> Result<WatchStatus, String> {
     if path.exists() {
         std::fs::remove_file(path).map_err(|e| e.to_string())?;
     }
+    stop_ble();
+    let _ = std::fs::remove_file(config_path()?.with_file_name("watch-ble-enabled"));
     if let Some(r) = RECEIVER.lock().unwrap().take() {
         r.running.store(false, Ordering::Release);
     }

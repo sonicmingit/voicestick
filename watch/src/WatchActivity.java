@@ -38,6 +38,7 @@ public final class WatchActivity extends Activity {
         boundKey = getPreferences(0).getInt("key",-1);
         for (int i=0;i<2;i++) slots[i]=getPreferences(0).getInt("slot"+i,i);
         face.post(this::layout);
+        if(getPreferences(0).getBoolean("ble",false) || getIntent().getBooleanExtra("ble",false)) enableBle();
     }
     private void acceptPairing(Intent intent) {
         String value=intent.getStringExtra("pair");
@@ -113,9 +114,26 @@ public final class WatchActivity extends Activity {
             canvas.restore();
         }
     }
+    private void enableBle() {
+        if(checkSelfPermission(Manifest.permission.BLUETOOTH_ADVERTISE)!=PackageManager.PERMISSION_GRANTED ||
+           checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)!=PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.BLUETOOTH_ADVERTISE,Manifest.permission.BLUETOOTH_CONNECT},2);return;
+        }
+        try {
+            if(WatchBle.instance==null)WatchBle.instance=new WatchBle(this,token);
+            getPreferences(0).edit().putBoolean("ble",true).apply();
+        }catch(Exception e){ Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show(); }
+    }
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results) {
+        super.onRequestPermissionsResult(request,permissions,results);
+        if(request==2 && results.length==2 && results[0]==0 && results[1]==0) enableBle();
+    }
+    private void stopBle() {
+        if(WatchBle.instance!=null){WatchBle.instance.close();WatchBle.instance=null;}
+    }
     private void settings() {
         if (busy) return;
-        new AlertDialog.Builder(this).setItems(new String[]{"左键 · "+actions[slots[0]],"右键 · "+actions[slots[1]],"绑定实体键","取消实体键绑定"},(d,n)->{
+        new AlertDialog.Builder(this).setItems(new String[]{"左键 · "+actions[slots[0]],"右键 · "+actions[slots[1]],"绑定实体键","取消实体键绑定",WatchBle.instance==null?"使用蓝牙 BLE":"切换到无线 ADB"},(d,n)->{
             if(n<2) new AlertDialog.Builder(this).setItems(actions,(a,k)->{
                 slots[n]=k; getPreferences(0).edit().putInt("slot"+n,k).apply(); refresh(n);
             }).show();
@@ -123,6 +141,10 @@ public final class WatchActivity extends Activity {
                 learning=true; status.setText("请按要绑定的键");
                 ui.removeCallbacks(learnTimeout);
                 ui.postDelayed(learnTimeout,8000);
+            }
+            else if(n==4){
+                if(WatchBle.instance==null)enableBle();
+                else {stopBle();getPreferences(0).edit().putBoolean("ble",false).apply();}
             }
             else { learning=false; boundKey=-1; getPreferences(0).edit().remove("key").apply(); }
         }).show();
@@ -224,7 +246,8 @@ public final class WatchActivity extends Activity {
                         try(WatchLink old=new WatchLink()) { old.connect(token); old.send('P',null,0); ok=true; }
                         catch(Exception ignored) { ok=false; }
                     }
-                    String note=ok?"已连接电脑":"未连接电脑";
+                    WatchBle radio=WatchBle.instance;
+                    String note=radio!=null?(ok?"BLE 已连接":radio.state):(ok?"已连接电脑":"未连接电脑");
                     ui.post(()->{ pinging=false; if(visible && !busy && !learning) status.setText(note); });
                 });
             }
@@ -236,5 +259,5 @@ public final class WatchActivity extends Activity {
         visible=false; learning=false; downKey=-1; ui.removeCallbacks(learnTimeout); ui.removeCallbacks(hardwareStart); ui.removeCallbacks(ping);
         cancelVoice(); super.onPause();
     }
-    @Override protected void onDestroy() { worker.shutdownNow(); super.onDestroy(); }
+    @Override protected void onDestroy() { stopBle(); worker.shutdownNow(); super.onDestroy(); }
 }

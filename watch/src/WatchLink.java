@@ -17,11 +17,14 @@ import java.nio.charset.StandardCharsets;
 final class WatchLink implements AutoCloseable {
     interface Update { void show(String text); }
     final Socket socket = new Socket();
+    private volatile WatchBle.Channel radio;
     private DataOutputStream out;
     private BufferedReader in;
 
     void connect(String token) throws IOException {
         if (!token.matches("[a-fA-F0-9]{32}")) throw new IOException("请在电脑运行配对脚本");
+        WatchBle ble=WatchBle.instance;
+        if(ble!=null){ radio=ble.open(); return; }
         socket.connect(new InetSocketAddress("127.0.0.1",38465),1500);
         socket.setSoTimeout(3500);
         socket.setTcpNoDelay(true);
@@ -33,14 +36,15 @@ final class WatchLink implements AutoCloseable {
         writeFrame(cmd,audio,length);
         return readReply();
     }
-    private void writeFrame(char cmd, byte[] audio,int length) throws IOException {
+    private void writeFrame(char cmd, byte[] audio,int length) throws Exception {
+        if(radio!=null){radio.send(cmd,audio,length);return;}
         out.writeByte(cmd);
         out.writeShort(length);
         if (length > 0) out.write(audio,0,length);
         out.flush();
     }
     private JSONObject readReply() throws Exception {
-        String response = in.readLine();
+        String response = radio==null?in.readLine():new String(radio.read(),StandardCharsets.UTF_8);
         if (response == null) throw new IOException("电脑已断开");
         JSONObject state = new JSONObject(response);
         if ("error".equals(state.optString("phase"))) throw new IOException(state.optString("lastError"));
@@ -133,7 +137,7 @@ final class WatchLink implements AutoCloseable {
             String last="";
             for (int count=1;;count++) {
                 JSONObject response=readReply();
-                if (count==finalReplyNumber) return response;
+                if (radio==null ? count==finalReplyNumber : response.optBoolean("bleFinal")) return response;
                 String text=response.optString("text");
                 if (!text.isEmpty() && !text.equals(last)) { last=text; update.show(text); }
             }
@@ -150,6 +154,7 @@ final class WatchLink implements AutoCloseable {
     }
     public void close() {
         held = false;
+        if(radio!=null)radio.close();
         try { socket.close(); } catch (IOException ignored) {}
     }
 }
