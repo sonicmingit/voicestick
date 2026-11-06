@@ -21,6 +21,9 @@ fn serve(
     token: &[u8],
     mut active: impl FnMut() -> bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Winsock inherits the listener's nonblocking mode on accept. Frame reads
+    // must wait for the next microphone packet, subject to the timeouts below.
+    socket.set_nonblocking(false)?;
     socket.set_nodelay(true)?;
     socket.set_read_timeout(Some(Duration::from_secs(4)))?;
     socket.set_write_timeout(Some(Duration::from_secs(3)))?;
@@ -141,6 +144,30 @@ mod tests {
         let mut data = Vec::new();
         client.read_to_end(&mut data).unwrap();
         (result, data)
+    }
+
+    #[test]
+    fn integrated_listener_waits_for_delayed_frame_data() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (mut server, _) = listener.accept().unwrap();
+        client.write_all(TOKEN).unwrap();
+        client.write_all(b"P").unwrap();
+        let mut delayed = client.try_clone().unwrap();
+        let sender = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(100));
+            delayed.write_all(b"\0\0").unwrap();
+        });
+        let result = serve(&mut server, TOKEN, || true);
+        sender.join().unwrap();
+        result.unwrap();
+        let mut line = String::new();
+        std::io::BufRead::read_line(&mut std::io::BufReader::new(client), &mut line).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&line).unwrap()["phase"],
+            "ready"
+        );
     }
 
     #[test]
