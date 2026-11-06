@@ -6,6 +6,9 @@ type Status = { paired: boolean; enabled: boolean; online: boolean; serial: stri
 const state = ref<Status>({ paired: false, enabled: false, online: false, serial: "", keys: null, pending: false, ble_enabled: false, ble_online: false });
 const actions = ["回车", "撤销", "粘贴"];
 const address = ref("");
+const tab=ref<"ble"|"adb">("ble");
+const pairCode=ref("");
+let initialized=false;
 const error = ref("");
 const busy = ref(false);
 let timer: ReturnType<typeof setInterval>;
@@ -15,8 +18,17 @@ async function refresh() {
   if (busy.value) return;
   try {
     const snapshot = await invoke<Status>("watch_status");
-    if (request === generation) state.value = snapshot;
+    if (request === generation) {
+      state.value = snapshot;
+      if (!initialized) {
+        if (snapshot.enabled && !snapshot.ble_enabled) tab.value="adb";
+        initialized=true;
+      }
+    }
   } catch { /* The plain browser preview has no native receiver. */ }
+}
+function chooseTab(choice:"ble"|"adb") {
+  tab.value=choice; initialized=true; error.value=""; pairCode.value="";
 }
 async function change(disconnect: boolean) {
   generation++;
@@ -36,7 +48,12 @@ async function forget() {
 }
 async function toggleBle() {
   generation++; busy.value=true; error.value="";
-  try { state.value=await invoke<Status>("watch_ble_mode",{enable:!state.value.ble_enabled}); }
+  try {
+    state.value=await invoke<Status>("watch_ble_mode",{
+      enable:!state.value.ble_enabled, code:!state.value.paired ? pairCode.value : null
+    });
+    pairCode.value="";
+  }
   catch(e){ error.value=String(e); }
   finally{ busy.value=false; }
 }
@@ -60,17 +77,31 @@ onUnmounted(() => { generation++; clearInterval(timer); });
 <template>
   <article class="card setup-card">
     <div class="card-title-row"><h2>小米 Watch 5</h2><span class="pill" :class="state.online ? 'ok' : 'warn'">{{ state.online ? "已连接" : state.enabled ? "等待手表" : "未启用" }}</span></div>
-    <p class="muted">手表通过无线调试连接，使用本页的火山豆包 API 和文字输出设置。首次使用请先在电脑上授权 ADB。</p>
-    <form class="chip-row" @submit.prevent="change(false)">
-      <label for="watch-address">手表地址</label>
-      <input id="watch-address" v-model="address" :placeholder="state.serial || '留空自动查找已连接手表'" :disabled="busy" />
-      <button class="primary-button" :disabled="busy">{{ busy ? "处理中…" : state.enabled ? "重新连接" : "连接手表" }}</button>
-      <button v-if="state.enabled" class="secondary-button" type="button" :disabled="busy" @click="change(true)">断开手表</button>
+    <p class="muted">手表听写使用火山豆包 API。下方的输入法选择用于 StickS3；文字输出方式与手表共用。</p>
+    <div class="chip-row" aria-label="手表连接方式">
+      <button v-for="choice in (['ble','adb'] as const)" :key="choice"
+        type="button" :class="tab===choice?'primary-button':'secondary-button'" :aria-pressed="tab===choice"
+        @click="chooseTab(choice)">{{ choice==='ble'?'蓝牙 BLE':'无线 ADB' }}</button>
+    </div>
+    <form v-if="tab==='ble'" class="chip-row" @submit.prevent="toggleBle">
+      <template v-if="!state.paired">
+        <label for="watch-code">蓝牙配对码</label>
+        <input id="watch-code" v-model="pairCode" type="password" autocomplete="off" spellcheck="false"
+          placeholder="手表顶部设置 → 查看蓝牙配对码" :disabled="busy" />
+      </template>
+      <button class="primary-button" :disabled="busy || (!state.paired && !pairCode.trim())">
+        {{ state.ble_enabled ? "关闭蓝牙接收" : "连接 BLE" }}
+      </button>
+      <small>{{ state.ble_online ? "BLE 已连接" : "在表上选择「使用蓝牙 BLE」，并保持应用在前台。" }}</small>
     </form>
-    <div v-if="state.paired" class="chip-row">
-      <button type="button" class="secondary-button" :disabled="busy" @click="toggleBle">{{ state.ble_enabled ? "关闭蓝牙接收" : "启用蓝牙 BLE（实验）" }}</button>
-      <button v-if="!state.enabled" type="button" class="secondary-button" :disabled="busy" @click="forget">清除配对</button>
-      <small v-if="state.ble_enabled">{{ state.ble_online ? "BLE 已连接" : "请在手表顶部设置选择「使用蓝牙 BLE」" }}</small>
+    <form v-else class="chip-row" @submit.prevent="change(false)">
+      <label for="watch-address">无线调试地址</label>
+      <input id="watch-address" v-model="address" :placeholder="state.serial || '留空自动查找已授权手表'" :disabled="busy" />
+      <button class="primary-button" :disabled="busy">{{ busy ? "处理中…" : "连接 ADB" }}</button>
+    </form>
+    <div class="chip-row">
+      <button v-if="state.enabled" class="secondary-button" type="button" :disabled="busy" @click="change(true)">断开手表</button>
+      <button v-if="state.paired && !state.enabled" type="button" class="secondary-button" :disabled="busy" @click="forget">清除配对</button>
     </div>
     <div v-if="state.keys" class="chip-row">
       <label v-for="(key, i) in state.keys" :key="i">{{ i === 0 ? "左键" : "右键" }}

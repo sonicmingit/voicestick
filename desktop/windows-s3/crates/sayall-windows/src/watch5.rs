@@ -172,6 +172,15 @@ mod tests {
     }
 
     #[test]
+    fn manual_ble_key_accepts_watch_groups_and_rejects_short_codes() {
+        assert_eq!(
+            parse_ble_key("0011 2233 4455 6677\n8899 AABB CCDD EEFF").unwrap(),
+            "00112233445566778899aabbccddeeff"
+        );
+        assert!(parse_ble_key("123456").is_err());
+        assert!(parse_ble_key("00112233445566778899aabbccddeefg").is_err());
+    }
+    #[test]
     fn authenticated_ping_replies_ready() {
         let (error, data) = exchange(TOKEN, b"P\0\0");
         assert!(error.is_empty());
@@ -388,17 +397,39 @@ fn stop_ble() {
         let _ = child.wait();
     }
 }
-pub fn set_ble(enable: bool) -> Result<WatchStatus, String> {
+fn parse_ble_key(code: &str) -> Result<String, String> {
+    let token: String = code
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect();
+    if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("请输入手表显示的 8 组蓝牙配对码".into());
+    }
+    Ok(token.to_ascii_lowercase())
+}
+pub fn set_ble(enable: bool, code: Option<String>) -> Result<WatchStatus, String> {
     let _setup = SETUP.lock().unwrap();
     let marker = config_path()?.with_file_name("watch-ble-enabled");
     if enable {
         if !status().enabled {
             let path = config_path()?;
-            if !path.is_file() {
-                return Err("首次使用请先连接手表完成配对".into());
-            }
-            let pair = read_pair(&path)?;
-            start(bind()?, pair)?;
+            let listener = bind()?;
+            let pair = if let Some(code) = code {
+                let token = parse_ble_key(&code)?;
+                let pair = Pair {
+                    serial: String::new(),
+                    token,
+                };
+                std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+                std::fs::write(&path, serde_json::to_vec(&pair).map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
+                pair
+            } else if path.exists() {
+                read_pair(&path)?
+            } else {
+                return Err("请先在手表查看蓝牙配对码，并在此输入".into());
+            };
+            start(listener, pair)?;
         }
         launch_ble()?;
         std::fs::write(marker, b"1").map_err(|e| e.to_string())?;
@@ -485,11 +516,11 @@ pub fn connect(address: String) -> Result<WatchStatus, String> {
     let serial = watches[0];
     let path = config_path()?;
     let current = status();
-    if current.enabled && current.serial != serial {
+    if current.enabled && !current.serial.is_empty() && current.serial != serial {
         return Err("请先断开已配置的手表".into());
     }
     let listener = if current.enabled { None } else { Some(bind()?) };
-    let pair: Pair = if current.enabled {
+    let mut pair: Pair = if current.enabled || path.is_file() {
         serde_json::from_slice(&std::fs::read(&path).map_err(|e| e.to_string())?)
             .map_err(|_| "请先断开并重新连接")?
     } else {
@@ -498,6 +529,7 @@ pub fn connect(address: String) -> Result<WatchStatus, String> {
             token: uuid::Uuid::new_v4().simple().to_string(),
         }
     };
+    pair.serial = serial.to_owned();
     let info = adb(&[
         "-s",
         serial,
@@ -510,12 +542,12 @@ pub fn connect(address: String) -> Result<WatchStatus, String> {
         .split_whitespace()
         .find_map(|v| v.strip_prefix("versionCode=")?.parse::<u32>().ok())
         .unwrap_or(0);
-    if version < 6 {
+    if version < 7 {
         let apk = std::env::current_exe()
             .map_err(|e| e.to_string())?
-            .with_file_name("VoiceStick-Watch-0.1.5.apk");
+            .with_file_name("VoiceStick-Watch-0.1.6.apk");
         if !apk.is_file() {
-            return Err("请将 VoiceStick-Watch-0.1.5.apk 放到客户端同一目录后重试".into());
+            return Err("请将 VoiceStick-Watch-0.1.6.apk 放到客户端同一目录后重试".into());
         }
         adb(&[
             "-s",
@@ -543,16 +575,26 @@ pub fn connect(address: String) -> Result<WatchStatus, String> {
         "--es",
         "pair",
         &pair.token,
+        "--es",
+        "transport",
+        "adb",
     ])?;
     if launch.contains("Error") {
         return Err("未能打开手表应用".into());
     }
+    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(&path, serde_json::to_vec(&pair).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
     if let Some(listener) = listener {
-        std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-        std::fs::write(path, serde_json::to_vec(&pair).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
         start(listener, pair)?;
+    } else if let Some(r) = RECEIVER.lock().unwrap().as_mut() {
+        r.serial = serial.to_owned();
     }
+    let marker = path.with_file_name("watch-ble-enabled");
+    if marker.exists() {
+        std::fs::remove_file(marker).map_err(|e| e.to_string())?;
+    }
+    stop_ble();
     clear_disabled()?;
     Ok(status())
 }

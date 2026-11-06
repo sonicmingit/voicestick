@@ -4052,8 +4052,8 @@ async fn connect_watch(address: String) -> Result<sayall_windows::watch5::WatchS
     tauri::async_runtime::spawn_blocking(move || sayall_windows::watch5::connect(address)).await.map_err(|e| e.to_string())?
 }
 #[tauri::command]
-async fn watch_ble_mode(enable:bool) -> Result<sayall_windows::watch5::WatchStatus,String> {
-    tauri::async_runtime::spawn_blocking(move || sayall_windows::watch5::set_ble(enable)).await.map_err(|e|e.to_string())?
+async fn watch_ble_mode(enable:bool, code:Option<String>) -> Result<sayall_windows::watch5::WatchStatus,String> {
+    tauri::async_runtime::spawn_blocking(move || sayall_windows::watch5::set_ble(enable,code)).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
 fn set_watch_keys(keys:[u8;2]) -> Result<(),String> {

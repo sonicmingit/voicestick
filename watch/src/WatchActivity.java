@@ -45,6 +45,10 @@ public final class WatchActivity extends Activity {
         if (value!=null && value.matches("[0-9a-fA-F]{32}"))
             getPreferences(0).edit().putString("token",value).apply();
         token=getPreferences(0).getString("token","");
+        if("adb".equals(intent.getStringExtra("transport"))) {
+            getPreferences(0).edit().putBoolean("ble",false).apply();
+            stopBle();
+        }
     }
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); acceptPairing(intent); }
     private int px(int n) { return Math.round(n*side/480f); }
@@ -114,7 +118,24 @@ public final class WatchActivity extends Activity {
             canvas.restore();
         }
     }
+    private void ensurePairingKey() {
+        if(token.matches("[0-9a-fA-F]{32}")) return;
+        byte[] bytes=new byte[16];
+        new java.security.SecureRandom().nextBytes(bytes);
+        StringBuilder hex=new StringBuilder(32);
+        for(byte value:bytes) hex.append(String.format(java.util.Locale.ROOT,"%02x",value&255));
+        token=hex.toString();
+        getPreferences(0).edit().putString("token",token).apply();
+    }
+    private void showPairingKey() {
+        ensurePairingKey();
+        String groups=token.toUpperCase(java.util.Locale.ROOT).replaceAll("(.{4})(?!$)","$1 ");
+        new AlertDialog.Builder(this).setTitle("蓝牙配对码")
+            .setMessage(groups.substring(0,19)+"\n"+groups.substring(20))
+            .setPositiveButton("完成",null).show();
+    }
     private void enableBle() {
+        ensurePairingKey();
         if(checkSelfPermission(Manifest.permission.BLUETOOTH_ADVERTISE)!=PackageManager.PERMISSION_GRANTED ||
            checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)!=PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.BLUETOOTH_ADVERTISE,Manifest.permission.BLUETOOTH_CONNECT},2);return;
@@ -133,7 +154,7 @@ public final class WatchActivity extends Activity {
     }
     private void settings() {
         if (busy) return;
-        new AlertDialog.Builder(this).setItems(new String[]{"左键 · "+actions[slots[0]],"右键 · "+actions[slots[1]],"绑定实体键","取消实体键绑定",WatchBle.instance==null?"使用蓝牙 BLE":"切换到无线 ADB"},(d,n)->{
+        new AlertDialog.Builder(this).setItems(new String[]{"左键 · "+actions[slots[0]],"右键 · "+actions[slots[1]],"绑定实体键","取消实体键绑定",WatchBle.instance==null?"使用蓝牙 BLE":"切换到无线 ADB","查看蓝牙配对码"},(d,n)->{
             if(n<2) new AlertDialog.Builder(this).setItems(actions,(a,k)->{
                 slots[n]=k; getPreferences(0).edit().putInt("slot"+n,k).apply(); refresh(n);
             }).show();
@@ -142,6 +163,7 @@ public final class WatchActivity extends Activity {
                 ui.removeCallbacks(learnTimeout);
                 ui.postDelayed(learnTimeout,8000);
             }
+            else if(n==5){ showPairingKey(); }
             else if(n==4){
                 if(WatchBle.instance==null)enableBle();
                 else {stopBle();getPreferences(0).edit().putBoolean("ble",false).apply();}
