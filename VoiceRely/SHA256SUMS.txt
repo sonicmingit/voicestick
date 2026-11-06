@@ -1,0 +1,4 @@
+35c1c97784ecda87b5ed5ecc179ec0f793bc759d84e15f7cef038e7ef53fb392  StickS3/voicestick-firmware-sticks3-merged-0.4.3.bin
+133236af874c6526877e73b21ac25e528ca06b910313bebf24360646b993ca03  StickS3/voicestick-firmware-sticks3-ota-0.4.3.bin
+1778d4ca6b0e243e35d77f2c4a9adb1c9dcf9fb3c334ac93bf98429ad3316040  Watch/VoiceRely-Watch-0.1.7.apk
+091b62d269800a02919a469d7ec8ba15da5445d89319a5ddff4c1487c9fcc26d  Windows/VoiceRely-Windows-x64.zip
