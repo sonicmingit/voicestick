@@ -499,15 +499,17 @@ pub fn connect(address: String) -> Result<WatchStatus, String> {
         if fields.next() != Some("device") || (!addr.is_empty() && addr != serial) {
             continue;
         }
-        if adb(&["-s", serial, "shell", "getprop", "ro.product.model"])
-            .is_ok_and(|m| m == "M2505W1")
-        {
+        if adb(&["-s", serial, "shell", "pm", "list", "features"]).is_ok_and(|features| {
+            features
+                .lines()
+                .any(|line| line.trim() == "feature:android.hardware.type.watch")
+        }) {
             watches.push(serial);
         }
     }
     if watches.len() != 1 {
         return Err(if watches.is_empty() {
-            "没有找到已授权的 Watch 5，请先配对无线调试，再输入连接地址"
+            "没有找到已授权的 Android 手表，请先配对无线调试，再输入连接地址"
         } else {
             "检测到多块手表，请输入目标手表的无线调试地址"
         }
@@ -542,12 +544,12 @@ pub fn connect(address: String) -> Result<WatchStatus, String> {
         .split_whitespace()
         .find_map(|v| v.strip_prefix("versionCode=")?.parse::<u32>().ok())
         .unwrap_or(0);
-    if version < 7 {
+    if version < 8 {
         let apk = std::env::current_exe()
             .map_err(|e| e.to_string())?
-            .with_file_name("VoiceStick-Watch-0.1.6.apk");
+            .with_file_name("VoiceRely-Watch-0.1.7.apk");
         if !apk.is_file() {
-            return Err("请将 VoiceStick-Watch-0.1.6.apk 放到客户端同一目录后重试".into());
+            return Err("请将 VoiceRely-Watch-0.1.7.apk 放到客户端同一目录后重试".into());
         }
         adb(&[
             "-s",

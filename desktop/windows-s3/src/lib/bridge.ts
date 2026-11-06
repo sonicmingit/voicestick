@@ -1509,7 +1509,7 @@ export async function listPresetApps(): Promise<PresetAppInfo[]> {
   if (!isTauriRuntime()) {
     // 浏览器预览：展示完整预设表（仅渲染验证）。
     return [
-      { id: "sayall", name: "VoiceStick S3", installed: true },
+      { id: "sayall", name: "VoiceRely", installed: true },
       { id: "wechat", name: "微信", installed: true },
       { id: "netease_music", name: "网易云音乐", installed: true },
       { id: "chrome", name: "Chrome 浏览器", installed: true },
@@ -2501,7 +2501,7 @@ export function focusLearnErrorLabel(message: string): string {
     case "no_candidate":
       return t("没有学习成功，请确认目标应用已经打开，再点击它的输入框试一次");
     case "self_foreground":
-      return t("学习期间VoiceStick S3在窗口最前面：请等目标应用打开后，再点击它的输入框试一次");
+      return t("学习期间VoiceRely在窗口最前面：请等目标应用打开后，再点击它的输入框试一次");
     case "not_foreground":
       return t("目标应用没有在最前面：请点击它的输入框后再试一次");
     case "target_exited":

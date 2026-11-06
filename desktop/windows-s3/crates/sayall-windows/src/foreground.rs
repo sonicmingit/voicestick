@@ -63,7 +63,7 @@ pub fn foreground_application_name() -> Option<String> {
         if foreground_pid_is_ours(process_id, std::process::id()) {
             // 前台就是本应用（例如用户在个人中心里测试语音）：用产品简称，而不是
             // 归入「未知应用」（2026-10-25 用户要求）。
-            return Some("VoiceStick S3".to_owned());
+            return Some("VoiceRely".to_owned());
         }
         let handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id) {
             Ok(handle) => handle,
@@ -131,7 +131,7 @@ pub fn application_display_name(executable: &str) -> Option<String> {
     if lower == "sayall-windows-app" {
         // 语音开始时前台就是本应用（例如用户在个人中心测试）：直接显示产品简称，
         // 不再归入「未知应用」（2026-10-25 用户要求，与窗口标题口径一致）。
-        return Some("VoiceStick S3".to_owned());
+        return Some("VoiceRely".to_owned());
     }
     let exe_name = format!("{lower}.exe");
     if let Some(app) = crate::app_launcher::PRESET_APPS.iter().find(|app| {
@@ -224,11 +224,11 @@ mod tests {
         // 前台是本应用时也要有名字：个人中心里测试语音不会显示「未知应用」。
         assert_eq!(
             application_display_name("sayall-windows-app.exe").as_deref(),
-            Some("VoiceStick S3")
+            Some("VoiceRely")
         );
         assert_eq!(
             application_display_name(r"C:\Apps\SayAll\sayall-windows-app.exe").as_deref(),
-            Some("VoiceStick S3")
+            Some("VoiceRely")
         );
     }
 }

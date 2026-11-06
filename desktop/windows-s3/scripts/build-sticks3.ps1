@@ -30,11 +30,11 @@ if ($Probe) { Run-Checked { cargo run -p sayall-windows --example sticks3_probe 
 Run-Checked { pnpm tauri build --debug --no-bundle --features hide-console }
 $output = Join-Path (Get-Location) 'local-build'
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-Copy-Item -LiteralPath 'target/debug/sayall-windows-app.exe' -Destination (Join-Path $output 'VoiceStickS3.exe')
+Copy-Item -LiteralPath 'target/debug/sayall-windows-app.exe' -Destination (Join-Path $output 'VoiceRely.exe')
 Copy-Item -LiteralPath 'STICKS3-README.md' -Destination (Join-Path $output '使用说明.md')
 Copy-Item -LiteralPath 'LICENSE' -Destination (Join-Path $output 'LICENSE')
 Copy-Item -LiteralPath 'THIRD_PARTY_NOTICES.md' -Destination $output
 Copy-Item -LiteralPath 'ATTRIBUTION.md' -Destination $output
 Copy-Item -LiteralPath 'licenses' -Destination $output -Recurse -Force
-Get-FileHash -LiteralPath (Join-Path $output 'VoiceStickS3.exe') -Algorithm SHA256
-Write-Output "Built: $(Join-Path $output 'VoiceStickS3.exe')"
+Get-FileHash -LiteralPath (Join-Path $output 'VoiceRely.exe') -Algorithm SHA256
+Write-Output "Built: $(Join-Path $output 'VoiceRely.exe')"

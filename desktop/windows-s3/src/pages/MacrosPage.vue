@@ -2076,7 +2076,7 @@ watch(
                     </template>
                     <template v-if="focusProfile?.strategy === 'recorded_element'">
                       <p class="muted focus-learn-hint">
-                        {{ t("点击后会立即打开目标 APP。请在 6 秒内点击需要聚焦的输入框；VoiceStick S3 只记录辅助功能特征，不读取输入内容。") }}
+                        {{ t("点击后会立即打开目标 APP。请在 6 秒内点击需要聚焦的输入框；VoiceRely 只记录辅助功能特征，不读取输入内容。") }}
                       </p>
                       <div class="focus-learn-row">
                         <button

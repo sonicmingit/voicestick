@@ -307,8 +307,8 @@ const ROW_ICONS: Record<string, { strokes: string[]; fills?: string[] }> = {
     <!-- 顶部模块（对齐 Mac 设置页：左边应用标识，右边版本与检查更新）。 -->
     <article class="card settings-overview">
       <div class="overview-identity">
-        <img class="app-logo" :src="appIconPreview" :alt="t('VoiceStick S3 应用图标')" />
-        <h2>{{ t("VoiceStick S3") }}</h2>
+        <img class="app-logo" :src="appIconPreview" :alt="t('VoiceRely 应用图标')" />
+        <h2>{{ t("VoiceRely") }}</h2>
         <p class="muted">{{ t("让语音触手可及") }}</p>
       </div>
 

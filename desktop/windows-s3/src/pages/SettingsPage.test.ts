@@ -203,7 +203,7 @@ describe("settings page", () => {
     await flushPromises();
 
     expect(wrapper.get("h1").text()).toBe("设置");
-    expect(wrapper.text()).toContain("VoiceStick S3");
+    expect(wrapper.text()).toContain("VoiceRely");
     expect(wrapper.text()).toContain("让语音触手可及");
     expect(wrapper.text()).toContain("当前版本");
     expect(wrapper.text()).toContain("0.5.0");

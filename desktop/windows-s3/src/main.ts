@@ -44,7 +44,7 @@ try {
   const root = document.querySelector<HTMLElement>("#app");
   if (root) {
     root.textContent = navigator.language.toLowerCase().startsWith("zh")
-      ? "VoiceStick S3启动失败。请将诊断日志发送给技术支持。"
+      ? "VoiceRely启动失败。请将诊断日志发送给技术支持。"
       : "SayAll failed to start. Send the diagnostic log to technical support.";
   }
 }

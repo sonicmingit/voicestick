@@ -1,5 +1,23 @@
 # Voice Stick
 
+## VoiceRely · Windows 多设备语音输入
+
+VoiceRely（原 VoiceStick S3 Windows 实验版）把 StickS3 和 Android 手表的语音送入电脑当前窗口。这个分支集中维护客户端、StickS3 固件和手表应用。下方保留原 Voice Stick 的客户端、固件、使用说明及上游署名。
+
+| 设备 | 连接方式 | 已验证范围 |
+| --- | --- | --- |
+| M5Stack StickS3 | 蓝牙 | 双实体键、按住说话、火山 API 输入 |
+| 国行小米 Watch 5（M2505W1） | 蓝牙 BLE 或无线 ADB | 圆屏录音、实时文字、电脑输入、回车／撤销／粘贴 |
+| 其他 Android 手表 | 取决于系统和硬件 | 可尝试，尚未逐款验证 |
+
+**[下载客户端、固件和 APK](VoiceRely/README.md)** · [手表配对步骤](watch/README.md) · [Windows 客户端源码](desktop/windows-s3/)
+
+<img src="docs/images/voicerely-watch.png" width="240" alt="小米 Watch 5 真机上的 VoiceRely 录音、回车和粘贴按钮">
+
+手表端需能安装 Android APK、有可供第三方应用使用的麦克风。无线 ADB 模式要求 Android 9 或以上及已授权的调试连接；BLE 模式要求 Android 13 或以上，并开放 BLE 广播和 GATT 服务。满足条件的其他品牌手表可以尝试。watchOS 和只运行厂商小程序的手表无法直接安装此 APK。手表语音始终走电脑的火山 API；StickS3 可另选豆包或微信输入法。
+
+## 原 Voice Stick 项目说明
+
 Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝牙按键语音输入设备。
 
 **Windows 0.4.3 新增按键脚本与识别服务快速切换**：六个手势可绑定连续快捷键与等待，例如 `Ctrl+A; Wait:100; Ctrl+C` 实现全选后复制。托盘第一层的“识别服务”菜单可切换豆包输入法、火山引擎 API 与 VoiceStick Cloud，沿用已保存的配置。新版补充音频通知重新初始化，并修正蓝牙键盘未就绪时的误导提示。[下载客户端、固件及 VB-CABLE 驱动包](https://github.com/sonicmingit/voicestick/releases/tag/windows-v0.4.3)。
@@ -34,10 +52,12 @@ Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝
 
 ## 小米 Watch 5 手表输入初版
 
-VoiceStick S3 客户端支持同时连接蓝牙 StickS3 和国行 Watch 5。在「连接 → 小米 Watch 5」连接已授权无线调试的手表，即可在表上按住麦克风说话，查看识别文字并输入电脑当前窗口。手表左右键可在客户端设为回车、撤销或粘贴。[手表安装和连接说明](watch/README.md)
+VoiceStick S3 客户端支持同时连接蓝牙 StickS3 和国行 Watch 5。在新版 VoiceRely 的「连接 → Android 手表」选择 BLE 或无线 ADB，即可在表上按住麦克风说话，查看识别文字并输入电脑当前窗口。手表左右键可在客户端设为回车、撤销或粘贴。[手表安装和连接说明](watch/README.md)
 
 ## 项目结构
 
+- `VoiceRely/`：本分支的客户端、固件和 APK 交付目录。
+- `watch/`：Android 手表应用和 Windows BLE 接收组件源码。
 - `firmware/`：M5Stack StickS3 / ESP32-S3 的 ESP-IDF 固件。
 - `desktop/macos/`：原生 macOS 菜单栏应用的 Swift 包。
 - `desktop/windows/`：原 Windows 桌面应用工作目录。

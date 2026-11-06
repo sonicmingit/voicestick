@@ -6,9 +6,9 @@ function Device([string[]]$arguments) {
     if ($LASTEXITCODE) { throw "ADB 操作失败" }
 }
 $receiver=(Resolve-Path "$Folder/watch5-bridge.exe").Path
-$apk=(Resolve-Path "$Folder/VoiceStick-Watch-0.1.6.apk").Path
-$model=(Device @('shell','getprop','ro.product.model')).Trim()
-if ($model -ne 'M2505W1') { throw "目标设备型号为 $model，请选择 Watch 5。" }
+$apk=(Resolve-Path "$Folder/VoiceRely-Watch-0.1.7.apk").Path
+$features=Device @('shell','pm','list','features')
+if ($features -notcontains 'feature:android.hardware.type.watch') { throw '请选择 Android 手表设备。' }
 Device @('install','-r',$apk)
 $running=@(Get-Process watch5-bridge -ErrorAction SilentlyContinue | Where-Object Path -eq $receiver)
 foreach($proc in $running) { Stop-Process -Id $proc.Id; $proc.WaitForExit() }

@@ -112,8 +112,29 @@ public final class WatchActivity extends Activity {
                 pen.setStyle(Paint.Style.STROKE); canvas.drawArc(34,34,66,68,0,180,false,pen);
                 canvas.drawLine(50,68,50,76,pen); canvas.drawLine(43,76,57,76,pen);
             } else {
-                pen.setTextAlign(Paint.Align.CENTER); pen.setTextSize(53);
-                canvas.drawText(new String[]{"↵","↶","⎘"}[slots[index]],50,67,pen);
+                pen.setStyle(Paint.Style.STROKE);
+                pen.setStrokeWidth(6);
+                pen.setStrokeJoin(Paint.Join.ROUND);
+                Path path=new Path();
+                switch(slots[index]) {
+                    case 0: // Carriage return.
+                        path.moveTo(70,30); path.lineTo(70,54); path.quadTo(70,58,66,58);
+                        path.lineTo(31,58); path.moveTo(43,46); path.lineTo(31,58); path.lineTo(43,70);
+                        break;
+                    case 1: // Undo.
+                        path.moveTo(71,66); path.cubicTo(71,44,57,39,32,40);
+                        path.moveTo(44,28); path.lineTo(32,40); path.lineTo(44,52);
+                        break;
+                    case 2: // Clipboard.
+                        canvas.drawRoundRect(31,32,69,74,5,5,pen);
+                        pen.setStyle(Paint.Style.FILL); pen.setColor(-1);
+                        canvas.drawRoundRect(39,25,61,38,4,4,pen);
+                        pen.setColor(0xff000000); pen.setStyle(Paint.Style.STROKE);
+                        canvas.drawRoundRect(39,25,61,38,4,4,pen);
+                        path.moveTo(42,53); path.lineTo(58,53);
+                        break;
+                }
+                canvas.drawPath(path,pen);
             }
             canvas.restore();
         }
@@ -135,6 +156,10 @@ public final class WatchActivity extends Activity {
             .setPositiveButton("完成",null).show();
     }
     private void enableBle() {
+        if(Build.VERSION.SDK_INT<33) {
+            Toast.makeText(this,"蓝牙模式需要 Android 13 或以上，可选择无线 ADB",Toast.LENGTH_LONG).show();
+            return;
+        }
         ensurePairingKey();
         if(checkSelfPermission(Manifest.permission.BLUETOOTH_ADVERTISE)!=PackageManager.PERMISSION_GRANTED ||
            checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)!=PackageManager.PERMISSION_GRANTED) {

@@ -137,8 +137,8 @@ export default {
   // 聚焦学习 / 记录点击位置失败
   "没有学习成功，请确认目标应用已经打开，再点击它的输入框试一次":
     "Learning failed. Check that the target app is open, then click its input field and try again",
-  "学习期间VoiceStick S3在窗口最前面：请等目标应用打开后，再点击它的输入框试一次":
-    "VoiceStick S3 was in front while learning. Wait until the target app opens, then click its input field and try again",
+  "学习期间VoiceRely在窗口最前面：请等目标应用打开后，再点击它的输入框试一次":
+    "VoiceRely was in front while learning. Wait until the target app opens, then click its input field and try again",
   "目标应用没有在最前面：请点击它的输入框后再试一次":
     "The target app was not in front. Click its input field and try again",
   "目标应用已经退出：请重试，应用会重新打开":

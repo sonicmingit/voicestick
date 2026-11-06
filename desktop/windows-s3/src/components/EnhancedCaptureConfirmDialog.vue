@@ -39,7 +39,7 @@ onMounted(() => {
   >
     <h3 id="capture-confirm-title">{{ t("开启“全按键支持”？") }}</h3>
     <p class="capture-confirm-intro">
-      {{ t("开启后，VoiceStick S3会直接读取遥控器上已配置的按键，避免影响物理键盘上的同名按键；返回 / 音量+ / 音量−也需要开启后才能使用。每次开启都会弹出 Windows 授权窗口，请选择“是”；关闭开关即停。") }}
+      {{ t("开启后，VoiceRely会直接读取遥控器上已配置的按键，避免影响物理键盘上的同名按键；返回 / 音量+ / 音量−也需要开启后才能使用。每次开启都会弹出 Windows 授权窗口，请选择“是”；关闭开关即停。") }}
     </p>
     <p class="capture-confirm-note">
       {{ t("个别杀毒软件可能把这个功能当成风险，拦截或关闭它，导致按键失灵、开启失败。") }}
@@ -48,7 +48,7 @@ onMounted(() => {
       {{ t("个别游戏带有防作弊保护，可能和这个功能合不来：表现为按键失灵、游戏打不开等。玩这类游戏前，建议先把全按键支持关掉。") }}
     </p>
     <p class="capture-confirm-privacy">
-      {{ t("VoiceStick S3只读取这个遥控器的按键，不收集、不上传任何其他信息。随时可以关闭，关闭后一切恢复原样。") }}
+      {{ t("VoiceRely只读取这个遥控器的按键，不收集、不上传任何其他信息。随时可以关闭，关闭后一切恢复原样。") }}
     </p>
     <footer class="capture-confirm-footer">
       <button type="button" class="secondary-button" @click="emit('close')">{{ t("取消") }}</button>

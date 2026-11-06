@@ -1,3 +1,5 @@
+> 本分支的 Windows 多设备客户端现名 **VoiceRely**。支持 StickS3 和 Android 手表（已实测国行小米 Watch 5）。[完整交付目录](../../VoiceRely/README.md) · [手表说明](../../watch/README.md)
+
 # VoiceStick S3 实验分支
 
 本目录是在 SayAll Windows 公开源码上适配 M5Stack StickS3 的独立实验项目。

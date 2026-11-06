@@ -1,4 +1,4 @@
-# VoiceStick S3 实验版
+# VoiceRely Windows 客户端
 
 在独立目录中将 [SayAll Windows](https://github.com/GetSayAll/remote-mic-app-windows) 的 Vue / Tauri Windows 客户端移植到 M5Stack StickS3。保留原有页面布局、双按键编辑、应用启动、组合动作、主题、配置导入导出和本地诊断等公开功能。
 
@@ -67,7 +67,7 @@ pnpm tauri build --debug --no-bundle --features hide-console
 
 ## 来源与许可
 
-上游基线：`GetSayAll/remote-mic-app-windows`，提交 `f3f52127973ef0327957c3058d4b5f3413ad803e`。派生代码继续使用 **GPL-3.0-only**，保留 [LICENSE](LICENSE)、来源与第三方说明。本实验界面标识为 VoiceStick S3，与官方 SayAll 无隶属关系。
+上游基线：`GetSayAll/remote-mic-app-windows`，提交 `f3f52127973ef0327957c3058d4b5f3413ad803e`。派生代码继续使用 **GPL-3.0-only**，保留 [LICENSE](LICENSE)、来源与第三方说明。本实验界面标识为 VoiceRely，与官方 SayAll 无隶属关系。
 
 上游 App Logo/Icon 另有授权要求，已替换为本仓库脚本绘制的原创设备图标；StickS3 展示图以现有 VoiceStick 设备图为基础，经图像生成工具移除背景并作视觉调整。新增与改编模块见 [ATTRIBUTION.md](ATTRIBUTION.md)。
 

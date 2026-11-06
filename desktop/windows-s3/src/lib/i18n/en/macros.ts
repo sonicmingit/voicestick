@@ -178,13 +178,13 @@ export default {
   "聚焦方式": "Focus method",
   "恢复默认": "Restore Defaults",
   "先点击“录入快捷键”，再按下该 APP 用于聚焦输入框的单个按键或组合键。执行时会先激活 APP，再发送此按键。":
-    "Click Record Focus Shortcut first, then press the single key or key combination this app uses to focus its input field. VoiceStick S3 activates the app before sending it.",
+    "Click Record Focus Shortcut first, then press the single key or key combination this app uses to focus its input field. VoiceRely activates the app before sending it.",
   "尚未录入": "Not Recorded",
   "录入中…（按 Esc 取消）": "Recording… (Esc to cancel)",
   "点击录入快捷键": "Record Focus Shortcut",
   "清除": "Clear",
-  "点击后会立即打开目标 APP。请在 6 秒内点击需要聚焦的输入框；VoiceStick S3 只记录辅助功能特征，不读取输入内容。":
-    "This opens the target app right away. Click the input field to focus within 6 seconds; VoiceStick S3 records accessibility traits only and never reads what you type.",
+  "点击后会立即打开目标 APP。请在 6 秒内点击需要聚焦的输入框；VoiceRely 只记录辅助功能特征，不读取输入内容。":
+    "This opens the target app right away. Click the input field to focus within 6 seconds; VoiceRely records accessibility traits only and never reads what you type.",
   "正在打开应用…": "Opening the app…",
   "等待点击输入框…": "Waiting for you to click the input field…",
   "开始学习输入框": "Learn Input Field",

@@ -520,7 +520,7 @@ const showAppFocusStrategy = computed(() => Boolean(focusTarget.value));
 function focusFailureLabel(reason: string): string {
   switch (reason) {
     case "self_foreground":
-      return t("当前就是VoiceStick S3自己的窗口，无需聚焦");
+      return t("当前就是VoiceRely自己的窗口，无需聚焦");
     case "no_candidate":
       return t("没有找到可用的输入框");
     case "not_foreground":
@@ -2688,7 +2688,7 @@ onUnmounted(() => {
             </template>
             <template v-if="focusProfile?.strategy === 'recorded_element'">
               <p class="muted focus-learn-hint">
-                {{ t("点击后会立即打开目标 APP。请在 6 秒内点击需要聚焦的输入框；VoiceStick S3 只记录辅助功能特征，不读取输入内容。") }}
+                {{ t("点击后会立即打开目标 APP。请在 6 秒内点击需要聚焦的输入框；VoiceRely 只记录辅助功能特征，不读取输入内容。") }}
               </p>
               <div class="focus-learn-row">
                 <button

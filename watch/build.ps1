@@ -8,7 +8,8 @@ function RunTool($exe, [string[]]$arguments) {
 $out=Join-Path $PSScriptRoot '../build/watch5'
 $tmp=Join-Path $out ([guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force "$tmp/classes","$tmp/dex" | Out-Null
-RunTool "$BuildTools/aapt2.exe" @('link','-o',"$tmp/base.apk",'--manifest',"$PSScriptRoot/AndroidManifest.xml",'-I',$PlatformJar)
+RunTool "$BuildTools/aapt2.exe" @('compile','--dir',"$PSScriptRoot/res",'-o',"$tmp/resources.zip")
+RunTool "$BuildTools/aapt2.exe" @('link','-o',"$tmp/base.apk",'--manifest',"$PSScriptRoot/AndroidManifest.xml",'-I',$PlatformJar,"$tmp/resources.zip")
 $sources=@(Get-ChildItem "$PSScriptRoot/src/*.java" | ForEach-Object FullName)
 RunTool "$Jdk/bin/javac.exe" (@('-encoding','UTF-8','-source','8','-target','8','-classpath',$PlatformJar,'-d',"$tmp/classes") + $sources)
 RunTool "$Jdk/bin/jar.exe" @('cf',"$tmp/classes.jar",'-C',"$tmp/classes",'.')
@@ -19,7 +20,7 @@ $key="$out/watch-debug.keystore"
 if (!(Test-Path $key)) {
     RunTool "$Jdk/bin/keytool.exe" @('-genkeypair','-keystore',$key,'-storepass','android','-keypass','android','-alias','watch','-keyalg','RSA','-validity','10000','-dname','CN=VoiceStick Watch Development')
 }
-$apk="$out/VoiceStick-Watch-0.1.6.apk"
+$apk="$out/VoiceRely-Watch-0.1.7.apk"
 RunTool "$Jdk/bin/java.exe" @('-jar',"$BuildTools/lib/apksigner.jar",'sign','--ks',$key,'--ks-pass','pass:android','--out',$apk,"$tmp/aligned.apk")
 RunTool "$Jdk/bin/java.exe" @('-jar',"$BuildTools/lib/apksigner.jar",'verify',$apk)
 RunTool "$BuildTools/zipalign.exe" @('-c','4',$apk)

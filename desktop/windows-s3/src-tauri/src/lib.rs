@@ -245,7 +245,7 @@ fn observe_webview_failure(webview: &tauri::Webview) {
 /// 界面未能正常显示时写进窗口标题的文案（2026-10-07 定稿，见 docs/product-copy.md）。
 /// 放在 Rust 是因为界面已经不工作时它也必须能显示，与托盘菜单文案同理。
 #[cfg(windows)]
-const WEBVIEW_UNAVAILABLE_TITLE: &str = "VoiceStick S3 界面未能正常显示，请从托盘退出后重开";
+const WEBVIEW_UNAVAILABLE_TITLE: &str = "VoiceRely 界面未能正常显示，请从托盘退出后重开";
 #[cfg(windows)]
 const WEBVIEW_UNAVAILABLE_TITLE_EN: &str =
     "SayAll could not display its interface. Quit from the tray and reopen it.";
@@ -4686,10 +4686,10 @@ fn webview_unavailable_title(app: &tauri::AppHandle) -> &'static str {
 fn apply_native_language(app: &tauri::AppHandle, preference: AppLanguage) {
     let language = effective_app_language(preference);
     // 窗口标题统一为「SayAll 版本号」：去掉「无线麦」前缀，版本号紧随其后（2026-10-24 用户要求）。
-    let title = format!("VoiceStick S3 {} · 实验版", app.package_info().version);
+    let title = format!("VoiceRely {} · 实验版", app.package_info().version);
     let (show_label, quit_label, tooltip) = match language {
-        AppLanguage::SimplifiedChinese => ("显示主界面", "退出", "VoiceStick S3"),
-        _ => ("Show Main Window", "Quit", "VoiceStick S3"),
+        AppLanguage::SimplifiedChinese => ("显示主界面", "退出", "VoiceRely"),
+        _ => ("Show Main Window", "Quit", "VoiceRely"),
     };
     let title_result = match main_window(app) {
         Some(window) => window.set_title(&title).is_ok(),
@@ -5198,7 +5198,7 @@ pub fn run() {
                     .icon(icon)
                     .menu(&menu)
                     .show_menu_on_left_click(false)
-                    .tooltip("VoiceStick S3")
+                    .tooltip("VoiceRely")
                     .on_menu_event(|app, event| match event.id.as_ref() {
                         "tray-show" => show_main_window(app, "tray_menu"),
                         "tray-quit" => app.exit(0),
@@ -7246,13 +7246,13 @@ mod ui_hint_tests {
         let mut state = WebviewUiHintState::default();
         assert!(state.schedule());
         assert!(!state.schedule(), "重复排定必须被忽略");
-        assert!(state.mark_showing("VoiceStick S3".to_owned()));
+        assert!(state.mark_showing("VoiceRely".to_owned()));
         assert!(
-            !state.mark_showing("VoiceStick S3".to_owned()),
+            !state.mark_showing("VoiceRely".to_owned()),
             "已在显示时不重复写"
         );
         assert!(!state.schedule(), "已在显示时不再排定");
-        assert_eq!(state.take_for_restore().as_deref(), Some("VoiceStick S3"));
+        assert_eq!(state.take_for_restore().as_deref(), Some("VoiceRely"));
         assert_eq!(state.take_for_restore(), None, "恢复只发生一次");
         assert!(state.schedule(), "收起后可以再次排定");
     }
@@ -7279,7 +7279,7 @@ mod ui_hint_tests {
     fn ui_hint_copy_follows_the_product_naming_rules() {
         assert_eq!(
             WEBVIEW_UNAVAILABLE_TITLE,
-            "VoiceStick S3 界面未能正常显示，请从托盘退出后重开"
+            "VoiceRely 界面未能正常显示，请从托盘退出后重开"
         );
         for banned in ["注入", "进程", "重载", "钩子", "提权", "端口"] {
             assert!(
@@ -7288,7 +7288,7 @@ mod ui_hint_tests {
             );
         }
         assert!(
-            WEBVIEW_UNAVAILABLE_TITLE.contains("VoiceStick S3"),
+            WEBVIEW_UNAVAILABLE_TITLE.contains("VoiceRely"),
             "产品名必须用名称表写法（含空格）"
         );
     }

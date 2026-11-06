@@ -1,11 +1,11 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.sonic.voicestick.watch" android:versionCode="7" android:versionName="0.1.6">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.sonic.voicestick.watch" android:versionCode="8" android:versionName="0.1.7">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="34"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"/>
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false"/>
-    <application android:label="VoiceStick" android:allowBackup="false" android:theme="@android:style/Theme.Material.NoActionBar">
+    <application android:label="VoiceRely" android:icon="@drawable/voice_relay" android:roundIcon="@drawable/voice_relay" android:allowBackup="false" android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name=".WatchActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>

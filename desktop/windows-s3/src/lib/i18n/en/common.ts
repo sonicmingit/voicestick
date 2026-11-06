@@ -6,10 +6,10 @@ export default {
   "语音输入": "Voice input",
   "通过 StickS3 键盘通道启动": "Starts through the StickS3 keyboard channel",
   "StickS3 使用设备自身的语音快捷键通道，无需开启小米遥控器的全按键支持。": "StickS3 uses its own voice shortcut channel. Xiaomi full-key support is not required.",
-  "VoiceStick S3 应用图标": "VoiceStick S3 app icon",
-  "反馈VoiceStick S3 的问题，或提出改进建议。": "Report a VoiceStick S3 issue or suggest an improvement.",
+  "VoiceRely 应用图标": "VoiceRely app icon",
+  "反馈VoiceRely 的问题，或提出改进建议。": "Report a VoiceRely issue or suggest an improvement.",
   // 产品名
-  "VoiceStick S3": "SayAll",
+  "VoiceRely": "VoiceRely",
   "设置页面": "Page navigation",
   // 通用动作
   "取消": "Cancel",
@@ -19,14 +19,14 @@ export default {
   "忽略此提醒": "Dismiss this notice",
   // 全按键支持确认弹窗
   "开启“全按键支持”？": "Enable Full-key support?",
-  "开启后，VoiceStick S3会直接读取遥控器上已配置的按键，避免影响物理键盘上的同名按键；返回 / 音量+ / 音量−也需要开启后才能使用。每次开启都会弹出 Windows 授权窗口，请选择“是”；关闭开关即停。":
-    "When on, VoiceStick S3 reads this remote's configured keys directly, so they do not affect same-named keys on a physical keyboard. Back, Volume +, and Volume − also require this setting. Every time you turn it on, Windows asks for authorization—choose Yes. Turn the switch off to stop.",
+  "开启后，VoiceRely会直接读取遥控器上已配置的按键，避免影响物理键盘上的同名按键；返回 / 音量+ / 音量−也需要开启后才能使用。每次开启都会弹出 Windows 授权窗口，请选择“是”；关闭开关即停。":
+    "When on, VoiceRely reads this remote's configured keys directly, so they do not affect same-named keys on a physical keyboard. Back, Volume +, and Volume − also require this setting. Every time you turn it on, Windows asks for authorization—choose Yes. Turn the switch off to stop.",
   "个别杀毒软件可能把这个功能当成风险，拦截或关闭它，导致按键失灵、开启失败。":
     "Some antivirus apps may treat this feature as a risk and block or turn it off, which can make the keys stop working or prevent it from turning on.",
   "个别游戏带有防作弊保护，可能和这个功能合不来：表现为按键失灵、游戏打不开等。玩这类游戏前，建议先把全按键支持关掉。":
     "Some games use anti-cheat protection that may conflict with this feature, causing keys to stop working or the game to fail to open. Turn off Full-key support before playing these games.",
-  "VoiceStick S3只读取这个遥控器的按键，不收集、不上传任何其他信息。随时可以关闭，关闭后一切恢复原样。":
-    "VoiceStick S3 only reads this remote's keys. It does not collect or upload any other information. You can turn it off at any time; everything returns to normal.",
+  "VoiceRely只读取这个遥控器的按键，不收集、不上传任何其他信息。随时可以关闭，关闭后一切恢复原样。":
+    "VoiceRely only reads this remote's keys. It does not collect or upload any other information. You can turn it off at any time; everything returns to normal.",
   "开启": "Enable",
   // 电量指示与会员锁标
   "电量未知": "Battery level unknown",
@@ -38,7 +38,7 @@ export default {
   "无法读取运行状态，请稍后重试。": "Couldn't read the app status. Please try again later.",
   "发现新版本 {version}": "Update available: {version}",
   // 更新完成提示（对齐 Mac update.completed.*）
-  "VoiceStick S3已更新": "SayAll Updated",
+  "VoiceRely已更新": "SayAll Updated",
   "已成功更新到版本 {version}。": "Successfully updated to version {version}.",
   // 本机应用选择器
   "本机应用": "Installed Apps",

@@ -76,7 +76,7 @@ onUnmounted(() => { generation++; clearInterval(timer); });
 
 <template>
   <article class="card setup-card">
-    <div class="card-title-row"><h2>小米 Watch 5</h2><span class="pill" :class="state.online ? 'ok' : 'warn'">{{ state.online ? "已连接" : state.enabled ? "等待手表" : "未启用" }}</span></div>
+    <div class="card-title-row"><h2>Android 手表</h2><span class="pill" :class="state.online ? 'ok' : 'warn'">{{ state.online ? "已连接" : state.enabled ? "等待手表" : "未启用" }}</span></div>
     <p class="muted">手表听写使用火山豆包 API。下方的输入法选择用于 StickS3；文字输出方式与手表共用。</p>
     <div class="chip-row" aria-label="手表连接方式">
       <button v-for="choice in (['ble','adb'] as const)" :key="choice"

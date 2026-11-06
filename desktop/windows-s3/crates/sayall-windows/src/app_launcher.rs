@@ -64,8 +64,8 @@ pub const DEFAULT_PRESET_IDS: &[&str] = &[
 pub const PRESET_APPS: &[PresetApp] = &[
     PresetApp {
         id: "sayall",
-        name: "VoiceStick S3",
-        exe_names: &["sayall-windows-app.exe"],
+        name: "VoiceRely",
+        exe_names: &["VoiceRely.exe", "VoiceStickS3.exe", "sayall-windows-app.exe"],
         install_paths: &[],
         shortcut_names: &[],
         relaunch_when_hidden: true,
@@ -3314,7 +3314,7 @@ pub(crate) mod tests {
     #[test]
     fn preset_table_includes_requested_apps() {
         let expected = [
-            ("sayall", "VoiceStick S3"),
+            ("sayall", "VoiceRely"),
             ("wechat", "微信"),
             ("netease_music", "网易云音乐"),
             ("chrome", "Chrome 浏览器"),
