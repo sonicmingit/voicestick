@@ -551,9 +551,8 @@ fn deliver_text_with(
     mut insert: impl FnMut(&str) -> Result<(), String>,
 ) -> Result<Delivery, String> {
     let copied = mode == OutputMode::ClipboardAndInput;
-    if copied {
-        copy(text)?;
-    }
+    let copy_error = if copied { copy(text).err() } else { None };
+    let copied = copied && copy_error.is_none();
     Ok(match insert(text) {
         Ok(()) => Delivery {
             phase: if copied {
@@ -561,11 +560,14 @@ fn deliver_text_with(
             } else {
                 "completed"
             },
-            error: None,
+            error: copy_error,
         },
         Err(error) => Delivery {
             phase: if copied { "copied" } else { "copy_required" },
-            error: Some(error),
+            error: Some(match copy_error {
+                Some(message) => format!("{message}；{error}"),
+                None => error,
+            }),
         },
     })
 }
@@ -645,6 +647,23 @@ mod tests {
         .unwrap();
         assert_eq!(*calls.borrow(), vec!["copy", "input"]);
         assert_eq!(result.phase, "copied_and_inserted");
+    }
+    #[test]
+    fn busy_clipboard_still_attempts_foreground_input() {
+        let mut inserted = false;
+        let result = deliver_text_with(
+            OutputMode::ClipboardAndInput,
+            "fixture",
+            |_| Err("clipboard busy".into()),
+            |_| {
+                inserted = true;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert!(inserted);
+        assert_eq!(result.phase, "completed");
+        assert_eq!(result.error.as_deref(), Some("clipboard busy"));
     }
     #[test]
     fn normal_mode_does_not_change_clipboard() {

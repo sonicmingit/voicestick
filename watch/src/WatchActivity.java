@@ -163,10 +163,9 @@ public final class WatchActivity extends Activity {
         busy=true; WatchLink link=new WatchLink(); active=link;
         status.setText("正在聆听"); transcript.setText("请说话…");
         face.setKeepScreenOn(true);
-        worker.execute(()->{
+        new Thread(()->{
             try {
-                link.connect(token);
-                JSONObject result=link.record(value->ui.post(()->{
+                JSONObject result=link.record(token,value->ui.post(()->{
                     if(active==link) { transcript.setText(value); scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN)); }
                 }));
                 ui.post(()->{
@@ -175,11 +174,11 @@ public final class WatchActivity extends Activity {
                     String error=result.optString("lastError","");
                     boolean warning=!error.isEmpty() && !error.equals("null");
                     transcript.setText(text.isEmpty()?"未识别到文字":text);
-                    complete(warning?"请检查电脑输入":text.isEmpty()?"已结束":"识别完成");
+                    complete(warning?("completed".equals(result.optString("phase"))?"已输入 · 复制失败":"请检查电脑输入"):text.isEmpty()?"已结束":"识别完成");
                 });
             } catch(Exception e) { ui.post(()->{ if(active==link) { transcript.setText(message(e)); complete("录音未完成"); } }); }
             finally { link.close(); }
-        });
+        },"watch-dictation").start();
     }
     private String message(Exception e) { return e instanceof java.net.SocketException ? "连接中断，请检查电脑接收器" : e.getMessage(); }
     private void finishVoice() { if(active!=null && active.held) { active.held=false; status.setText("正在识别"); } }

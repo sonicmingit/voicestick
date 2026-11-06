@@ -6,7 +6,7 @@ function Device([string[]]$arguments) {
     if ($LASTEXITCODE) { throw "ADB 操作失败" }
 }
 $receiver=(Resolve-Path "$Folder/watch5-bridge.exe").Path
-$apk=(Resolve-Path "$Folder/VoiceStick-Watch-0.1.1.apk").Path
+$apk=(Resolve-Path "$Folder/VoiceStick-Watch-0.1.3.apk").Path
 $model=(Device @('shell','getprop','ro.product.model')).Trim()
 if ($model -ne 'M2505W1') { throw "目标设备型号为 $model，请选择 Watch 5。" }
 Device @('install','-r',$apk)

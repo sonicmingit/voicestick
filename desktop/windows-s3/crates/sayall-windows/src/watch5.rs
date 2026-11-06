@@ -12,8 +12,9 @@ use std::{
 };
 
 fn reply(socket: &mut TcpStream, value: Value) -> std::io::Result<()> {
-    serde_json::to_writer(&mut *socket, &value)?;
-    socket.write_all(b"\n")
+    let mut frame = serde_json::to_vec(&value)?;
+    frame.push(b'\n');
+    socket.write_all(&frame)
 }
 
 fn serve(
@@ -413,12 +414,12 @@ pub fn connect(address: String) -> Result<WatchStatus, String> {
         .split_whitespace()
         .find_map(|v| v.strip_prefix("versionCode=")?.parse::<u32>().ok())
         .unwrap_or(0);
-    if version < 2 {
+    if version < 4 {
         let apk = std::env::current_exe()
             .map_err(|e| e.to_string())?
-            .with_file_name("VoiceStick-Watch-0.1.1.apk");
+            .with_file_name("VoiceStick-Watch-0.1.3.apk");
         if !apk.is_file() {
-            return Err("请将 VoiceStick-Watch-0.1.1.apk 放到客户端同一目录后重试".into());
+            return Err("请将 VoiceStick-Watch-0.1.3.apk 放到客户端同一目录后重试".into());
         }
         adb(&[
             "-s",

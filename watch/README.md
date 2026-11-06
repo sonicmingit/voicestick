@@ -1,4 +1,4 @@
-# VoiceStick Watch 0.1.1
+# VoiceStick Watch 0.1.3
 
 国行 Xiaomi Watch 5（M2505W1）前台语音输入原型。Windows 接收器复用 VoiceStick S3 的火山 API 配置、前台输入和可选剪贴板输出。手表发送 16 kHz 单声道 PCM，电脑返回识别文字。当前版本通过已授权的无线 ADB 转发连接，接收器只监听电脑回环地址。请在可信的个人电脑上使用。
 
