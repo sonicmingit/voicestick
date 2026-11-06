@@ -2089,3 +2089,6 @@ mod tests {
         assert_eq!(platform.audio_snapshot().phase, AudioPhase::Unsupported);
     }
 }
+
+#[cfg(windows)]
+pub mod watch5;

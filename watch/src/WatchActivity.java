@@ -204,10 +204,27 @@ public final class WatchActivity extends Activity {
             if(!visible || status==null) return;
             if(!busy && !pinging && !learning) {
                 pinging=true;
+                final byte[] current={(byte)slots[0],(byte)slots[1]};
                 worker.execute(()->{
                     boolean ok;
-                    try(WatchLink link=new WatchLink()) { link.connect(token); link.send('P',null,0); ok=true; }
-                    catch(Exception e) { ok=false; }
+                    try(WatchLink link=new WatchLink()) {
+                        link.connect(token);
+                        org.json.JSONArray keys=link.send('K',current,2).optJSONArray("keys");
+                        if(keys!=null && keys.length()==2) {
+                            int left=keys.getInt(0),right=keys.getInt(1);
+                            if(left>=0 && left<3 && right>=0 && right<3) ui.post(()->{
+                                slots[0]=left; slots[1]=right;
+                                getPreferences(0).edit().putInt("slot0",left).putInt("slot1",right).apply();
+                                refresh(0); refresh(1);
+                            });
+                        }
+                        ok=true;
+                    }
+                    catch(Exception e) {
+                        // The standalone 0.1.0 receiver understands the original heartbeat.
+                        try(WatchLink old=new WatchLink()) { old.connect(token); old.send('P',null,0); ok=true; }
+                        catch(Exception ignored) { ok=false; }
+                    }
                     String note=ok?"已连接电脑":"未连接电脑";
                     ui.post(()->{ pinging=false; if(visible && !busy && !learning) status.setText(note); });
                 });

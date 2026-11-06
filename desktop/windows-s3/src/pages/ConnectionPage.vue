@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import WatchConnection from "../components/WatchConnection.vue";
 import ImeSettingsPanel from "../components/ImeSettingsPanel.vue";
 import BatteryIndicator from "../components/BatteryIndicator.vue";
 import { t, tPage } from "../lib/i18n";
@@ -130,7 +131,7 @@ onUnmounted(() => { disposed = true; if (timer) clearInterval(timer); apiKey.val
   <section>
     <header class="page-header">
       <h1>{{ tPage("连接") }}</h1>
-      <span class="badge" :class="phaseTone">{{ connectionPhaseLabel(connection?.phase ?? "idle") }}</span>
+      <span class="badge" :class="phaseTone">StickS3 · {{ connectionPhaseLabel(connection?.phase ?? "idle") }}</span>
     </header>
     <div class="device-row api-device-row">
       <article class="card">
@@ -163,6 +164,7 @@ onUnmounted(() => { disposed = true; if (timer) clearInterval(timer); apiKey.val
         <p class="tiny muted">{{ t("首次使用会自动导入原 VoiceStick 的火山 API 配置。") }}</p>
       </article>
     </div>
+    <WatchConnection />
     <article class="card setup-card tool-selector"><div class="card-title-row"><h2>{{ t("语音输入工具") }}</h2></div>
       <div class="tool-cards"><button v-for="tool in tools" :key="tool.id" class="tool-card" :class="{ selected: mode === tool.id }" :aria-pressed="mode === tool.id" :disabled="savingPreferences" @click="preferences(tool.id)"><span class="tool-radio"></span><div><strong>{{ t(tool.name) }}</strong><small>{{ t(tool.note) }}</small></div></button></div>
     </article>

@@ -33,7 +33,7 @@ describe("direct API connection setup", () => {
   it("keeps the saved key when blank and normalizes hotwords", async () => {
     const page = await render();
     await page.get("#volcengine-hotwords").setValue("甲，乙\n 丙 ");
-    await page.get("form").trigger("submit"); await flushPromises();
+    await page.get(".api-settings form").trigger("submit"); await flushPromises();
     expect(mocks.saveVolcengineConfig).toHaveBeenCalledWith(null, "volc.seedasr.sauc.duration", ["甲", "乙", "丙"]);
     expect(page.text()).toContain("API 配置已保存");
   });
@@ -41,7 +41,7 @@ describe("direct API connection setup", () => {
     const page = await render(); await page.get("#volcengine-key").setValue("fixture-key");
     const button = page.findAll("button").find(button => button.text() === "测试 API 连接")!;
     expect(button.attributes("disabled")).toBeDefined();
-    await page.get("form").trigger("submit"); await flushPromises();
+    await page.get(".api-settings form").trigger("submit"); await flushPromises();
     expect(mocks.saveVolcengineConfig).toHaveBeenCalledWith("fixture-key", "volc.seedasr.sauc.duration", ["StickS3"]);
     expect(page.get<HTMLInputElement>("#volcengine-key").element.value).toBe("");
   });

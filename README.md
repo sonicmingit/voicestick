@@ -34,7 +34,7 @@ Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝
 
 ## 小米 Watch 5 手表输入初版
 
-国行 Watch 5 可通过无线 ADB 连接 Windows 接收器，在表上按住麦克风说话，查看识别文字并输入电脑当前窗口。左右两个快捷键可设为回车、撤销或粘贴。[手表安装和连接说明](watch/README.md)
+VoiceStick S3 客户端支持同时连接蓝牙 StickS3 和国行 Watch 5。在「连接 → 小米 Watch 5」连接已授权无线调试的手表，即可在表上按住麦克风说话，查看识别文字并输入电脑当前窗口。手表左右键可在客户端设为回车、撤销或粘贴。[手表安装和连接说明](watch/README.md)
 
 ## 项目结构
 

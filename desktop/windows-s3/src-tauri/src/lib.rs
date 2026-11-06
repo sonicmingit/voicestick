@@ -4044,6 +4044,22 @@ pub(crate) fn voice_input_tool_name(tool: Option<VoiceInputTool>) -> &'static st
 }
 
 #[tauri::command]
+fn watch_status() -> sayall_windows::watch5::WatchStatus {
+    sayall_windows::watch5::status()
+}
+#[tauri::command]
+async fn connect_watch(address: String) -> Result<sayall_windows::watch5::WatchStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || sayall_windows::watch5::connect(address)).await.map_err(|e| e.to_string())?
+}
+#[tauri::command]
+fn set_watch_keys(keys:[u8;2]) -> Result<(),String> {
+    sayall_windows::watch5::set_keys(keys)
+}
+#[tauri::command]
+async fn disconnect_watch() -> Result<sayall_windows::watch5::WatchStatus, String> {
+    tauri::async_runtime::spawn_blocking(sayall_windows::watch5::disconnect).await.map_err(|e| e.to_string())?
+}
+#[tauri::command]
 async fn get_volcengine_config() -> Result<sayall_windows::volcengine::ConfigSnapshot, String> {
     tauri::async_runtime::spawn_blocking(sayall_windows::volcengine::config_snapshot)
         .await
@@ -5143,6 +5159,7 @@ pub fn run() {
             ));
         })
         .setup(|app| {
+            if let Err(e) = sayall_windows::watch5::restore() { sayall_windows::gatt_note(format!("watch_receiver restore_failed {e}")); }
             sayall_windows::gatt_note(
                 "app_lifecycle event=tauri_setup phase=started result=passed".to_owned(),
             );
@@ -5881,6 +5898,10 @@ pub fn run() {
         delete_transcript,
         delete_transcript_application,
         delete_all_transcripts,
+        watch_status,
+        connect_watch,
+        set_watch_keys,
+        disconnect_watch,
         get_volcengine_config,
         save_volcengine_config,
         test_volcengine_connection,
@@ -6016,6 +6037,10 @@ pub fn run() {
         delete_transcript,
         delete_transcript_application,
         delete_all_transcripts,
+        watch_status,
+        connect_watch,
+        set_watch_keys,
+        disconnect_watch,
         get_volcengine_config,
         save_volcengine_config,
         test_volcengine_connection,
