@@ -4060,6 +4060,10 @@ fn set_watch_keys(keys:[u8;2]) -> Result<(),String> {
     sayall_windows::watch5::set_keys(keys)
 }
 #[tauri::command]
+async fn forget_watch() -> Result<sayall_windows::watch5::WatchStatus, String> {
+    tauri::async_runtime::spawn_blocking(sayall_windows::watch5::forget_pair).await.map_err(|e| e.to_string())?
+}
+#[tauri::command]
 async fn disconnect_watch() -> Result<sayall_windows::watch5::WatchStatus, String> {
     tauri::async_runtime::spawn_blocking(sayall_windows::watch5::disconnect).await.map_err(|e| e.to_string())?
 }
@@ -5907,6 +5911,7 @@ pub fn run() {
         set_watch_keys,
         watch_ble_mode,
         disconnect_watch,
+        forget_watch,
         get_volcengine_config,
         save_volcengine_config,
         test_volcengine_connection,
@@ -6047,6 +6052,7 @@ pub fn run() {
         set_watch_keys,
         watch_ble_mode,
         disconnect_watch,
+        forget_watch,
         get_volcengine_config,
         save_volcengine_config,
         test_volcengine_connection,

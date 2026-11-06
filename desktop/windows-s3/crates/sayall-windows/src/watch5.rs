@@ -250,6 +250,7 @@ pub fn set_keys(keys: [u8; 2]) -> Result<(), String> {
 }
 #[derive(Serialize)]
 pub struct WatchStatus {
+    pub paired: bool,
     pub enabled: bool,
     pub online: bool,
     pub serial: String,
@@ -276,6 +277,7 @@ pub fn status() -> WatchStatus {
     let keys = KEYS.lock().unwrap();
     match receiver.as_ref() {
         Some(r) => WatchStatus {
+            paired: true,
             enabled: true,
             ble_enabled,
             ble_online,
@@ -289,6 +291,7 @@ pub fn status() -> WatchStatus {
                 .is_some_and(|v| v.elapsed() < Duration::from_secs(15)),
         },
         None => WatchStatus {
+            paired: config_path().is_ok_and(|p| p.is_file()),
             enabled: false,
             ble_enabled,
             ble_online,
@@ -390,10 +393,16 @@ pub fn set_ble(enable: bool) -> Result<WatchStatus, String> {
     let marker = config_path()?.with_file_name("watch-ble-enabled");
     if enable {
         if !status().enabled {
-            return Err("首次使用请先连接手表完成配对".into());
+            let path = config_path()?;
+            if !path.is_file() {
+                return Err("首次使用请先连接手表完成配对".into());
+            }
+            let pair = read_pair(&path)?;
+            start(bind()?, pair)?;
         }
         launch_ble()?;
         std::fs::write(marker, b"1").map_err(|e| e.to_string())?;
+        clear_disabled()?;
     } else {
         if marker.exists() {
             std::fs::remove_file(marker).map_err(|e| e.to_string())?;
@@ -402,10 +411,21 @@ pub fn set_ble(enable: bool) -> Result<WatchStatus, String> {
     }
     Ok(status())
 }
+fn read_pair(path: &std::path::Path) -> Result<Pair, String> {
+    serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
+        .map_err(|_| "手表配对信息损坏".into())
+}
+fn clear_disabled() -> Result<(), String> {
+    let marker = config_path()?.with_file_name("watch-disabled");
+    if marker.exists() {
+        std::fs::remove_file(marker).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 pub fn restore() -> Result<(), String> {
     let _setup = SETUP.lock().unwrap();
     let path = config_path()?;
-    if path.is_file() && !status().enabled {
+    if path.is_file() && !path.with_file_name("watch-disabled").exists() && !status().enabled {
         let pair = serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
             .map_err(|_| "手表配置异常，请重新连接")?;
         start(bind()?, pair)?;
@@ -533,18 +553,32 @@ pub fn connect(address: String) -> Result<WatchStatus, String> {
             .map_err(|e| e.to_string())?;
         start(listener, pair)?;
     }
+    clear_disabled()?;
     Ok(status())
 }
 pub fn disconnect() -> Result<WatchStatus, String> {
     let _setup = SETUP.lock().unwrap();
     let path = config_path()?;
     if path.exists() {
-        std::fs::remove_file(path).map_err(|e| e.to_string())?;
+        std::fs::write(path.with_file_name("watch-disabled"), b"1").map_err(|e| e.to_string())?;
     }
     stop_ble();
     let _ = std::fs::remove_file(config_path()?.with_file_name("watch-ble-enabled"));
     if let Some(r) = RECEIVER.lock().unwrap().take() {
         r.running.store(false, Ordering::Release);
     }
+    Ok(status())
+}
+
+pub fn forget_pair() -> Result<WatchStatus, String> {
+    let _setup = SETUP.lock().unwrap();
+    if status().enabled {
+        return Err("请先断开手表".into());
+    }
+    let path = config_path()?;
+    if path.exists() {
+        std::fs::remove_file(path).map_err(|e| e.to_string())?;
+    }
+    clear_disabled()?;
     Ok(status())
 }
