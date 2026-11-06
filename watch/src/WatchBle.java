@@ -47,7 +47,7 @@ final class WatchBle extends BluetoothGattServerCallback implements AutoCloseabl
         if(advertiser==null) throw new IOException("此手表未开放 BLE 广播");
         server=manager.openGattServer(context,this);
         if(server==null) throw new IOException("无法启动手表 GATT 服务");
-        pipe=new BluetoothGattCharacteristic(PIPE,0x02|0x08|0x10,BluetoothGattCharacteristic.PERMISSION_READ|BluetoothGattCharacteristic.PERMISSION_WRITE);
+        pipe=new BluetoothGattCharacteristic(PIPE,BluetoothGattCharacteristic.PROPERTY_READ|BluetoothGattCharacteristic.PROPERTY_WRITE|BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE|BluetoothGattCharacteristic.PROPERTY_NOTIFY,BluetoothGattCharacteristic.PERMISSION_READ|BluetoothGattCharacteristic.PERMISSION_WRITE);
         pipe.addDescriptor(new BluetoothGattDescriptor(CCC, BluetoothGattDescriptor.PERMISSION_READ|BluetoothGattDescriptor.PERMISSION_WRITE));
         BluetoothGattService service=new BluetoothGattService(SERVICE,BluetoothGattService.SERVICE_TYPE_PRIMARY);
         service.addCharacteristic(pipe);
@@ -106,6 +106,12 @@ final class WatchBle extends BluetoothGattServerCallback implements AutoCloseabl
         if(respond)server.sendResponse(d,id,ok?0:6,0,null);
     }
     @Override public synchronized void onNotificationSent(BluetoothDevice d,int status){if(d.equals(peer))acknowledgments.offer(status);}
+    synchronized int captureBytes() {
+        // ATT header (3), fragment flag (1), GCM tag (16), command/id (2),
+        // predictor and sample count (4). Two ADPCM samples per payload byte.
+        int samples=Math.min(960, ((mtu-26)*2 / 80)*80);
+        return samples>=320 ? samples*2 : 1920;
+    }
     synchronized Channel open() throws IOException {
         if(!authenticated || peer==null)throw new IOException(state);
         session=session%255+1;

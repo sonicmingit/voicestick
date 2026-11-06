@@ -490,12 +490,12 @@ pub fn connect(address: String) -> Result<WatchStatus, String> {
         .split_whitespace()
         .find_map(|v| v.strip_prefix("versionCode=")?.parse::<u32>().ok())
         .unwrap_or(0);
-    if version < 5 {
+    if version < 6 {
         let apk = std::env::current_exe()
             .map_err(|e| e.to_string())?
-            .with_file_name("VoiceStick-Watch-0.1.4.apk");
+            .with_file_name("VoiceStick-Watch-0.1.5.apk");
         if !apk.is_file() {
-            return Err("请将 VoiceStick-Watch-0.1.4.apk 放到客户端同一目录后重试".into());
+            return Err("请将 VoiceStick-Watch-0.1.5.apk 放到客户端同一目录后重试".into());
         }
         adb(&[
             "-s",

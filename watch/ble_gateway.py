@@ -66,11 +66,14 @@ class Radio:
             self.seq += 1
             iv = self.nonce + struct.pack(">I", self.seq)
             data = self.cipher.encrypt(iv, plain, None)
-            size = max(19, min(510, self.client.mtu_size - 4))
+            characteristic = self.client.services.get_characteristic(PIPE)
+            fast = plain[:1]==b"J" and "write-without-response" in characteristic.properties
+            att_payload = characteristic.max_write_without_response_size if fast else self.client.mtu_size-3
+            size = max(19,min(510,att_payload-1))
             for i in range(0, len(data), size):
                 chunk = data[i:i+size]
                 flag = int(i == 0) | (2 if i + len(chunk) == len(data) else 0)
-                await self.client.write_gatt_char(PIPE, bytes([flag])+chunk, response=True)
+                await self.client.write_gatt_char(PIPE, bytes([flag])+chunk, response=not fast)
 
     async def reply(self, channel, state):
         await self.send(bytes([ord("J"),channel]) + json.dumps(state, ensure_ascii=False,separators=(",",":")).encode())
@@ -173,7 +176,7 @@ async def run():
                 lambda _, adv: SERVICE in adv.service_uuids, timeout=6)
             if device:
                 disconnected = asyncio.Event()
-                async with BleakClient(device,disconnected_callback=lambda _:disconnected.set()) as client:
+                async with BleakClient(device,services=[SERVICE],disconnected_callback=lambda _:disconnected.set()) as client:
                     await connected(client,pair["token"],disconnected)
         except (OSError,RuntimeError,ValueError,KeyError,asyncio.TimeoutError):
             pass

@@ -19,7 +19,7 @@ $key="$out/watch-debug.keystore"
 if (!(Test-Path $key)) {
     RunTool "$Jdk/bin/keytool.exe" @('-genkeypair','-keystore',$key,'-storepass','android','-keypass','android','-alias','watch','-keyalg','RSA','-validity','10000','-dname','CN=VoiceStick Watch Development')
 }
-$apk="$out/VoiceStick-Watch-0.1.4.apk"
+$apk="$out/VoiceStick-Watch-0.1.5.apk"
 RunTool "$Jdk/bin/java.exe" @('-jar',"$BuildTools/lib/apksigner.jar",'sign','--ks',$key,'--ks-pass','pass:android','--out',$apk,"$tmp/aligned.apk")
 RunTool "$Jdk/bin/java.exe" @('-jar',"$BuildTools/lib/apksigner.jar",'verify',$apk)
 RunTool "$BuildTools/zipalign.exe" @('-c','4',$apk)

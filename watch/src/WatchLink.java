@@ -75,7 +75,8 @@ final class WatchLink implements AutoCloseable {
             micStart = SystemClock.elapsedRealtime();
             AudioDeviceInfo device = mic.getRoutedDevice();
             if (device != null) route = device.getType();
-            byte[] buffer = new byte[1920];
+            WatchBle ble=WatchBle.instance;
+            byte[] buffer = new byte[ble==null?1920:ble.captureBytes()];
             while (held && SystemClock.elapsedRealtime()-micStart < 120000) {
                 int n = mic.read(buffer,0,buffer.length);
                 if (n<=0 || (n&1)!=0) throw new IOException("录音中断");
@@ -149,7 +150,7 @@ final class WatchLink implements AutoCloseable {
             long loudest=Math.round(20*Math.log10(Math.max(1,strongestFrame)/32768.0));
             Log.i("VoiceStickAudio","route="+route+" startMs="+(micStart==0?-1:micStart-pressedAt)
                     +" captureMs="+(micStart==0?0:micEnd-micStart)+" samples="+captured+" sent="+sent
-                    +" loudestRmsDbfs="+loudest+" queueMax="+highWater+" maxWriteMs="+maxWriteMs+" finalMs="+(endSent==0?-1:SystemClock.elapsedRealtime()-endSent));
+                    +" loudestRmsDbfs="+loudest+" queueMax="+highWater+" maxWriteMs="+maxWriteMs+" afterCaptureMs="+(micStart==0?-1:SystemClock.elapsedRealtime()-micEnd)+" finalMs="+(endSent==0?-1:SystemClock.elapsedRealtime()-endSent));
         }
     }
     public void close() {
