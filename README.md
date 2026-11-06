@@ -32,6 +32,10 @@ Voice Stick 将 M5Stack StickS3 变成适用于 macOS、Windows 和 Linux 的蓝
 
 本仓库原 VoiceStick 项目保留 [MIT License](LICENSE) 及原版权声明。`desktop/windows-s3/` 基于 [GetSayAll/remote-mic-app-windows](https://github.com/GetSayAll/remote-mic-app-windows)，该目录及其派生代码按 [GPL-3.0-only](desktop/windows-s3/LICENSE) 发布；保留上游版权、[第三方许可](desktop/windows-s3/THIRD_PARTY_NOTICES.md)及 [来源说明](desktop/windows-s3/ATTRIBUTION.md)。原作者和商标权利归各自权利人所有；本项目与 SayAll 官方无隶属关系。
 
+## 小米 Watch 5 手表输入初版
+
+国行 Watch 5 可通过无线 ADB 连接 Windows 接收器，在表上按住麦克风说话，查看识别文字并输入电脑当前窗口。左右两个快捷键可设为回车、撤销或粘贴。[手表安装和连接说明](watch/README.md)
+
 ## 项目结构
 
 - `firmware/`：M5Stack StickS3 / ESP32-S3 的 ESP-IDF 固件。
